@@ -26,7 +26,6 @@ vim.o.swapfile = false
 
 local endpoint = os.getenv("AMI_ENDPOINT") or "http://localhost:1234/v1"
 require("ami").setup({
-  daemon_url = "http://127.0.0.1:8799", -- dedicated port so the demo never clashes
   -- qwen3-coder gives the best advisor replies and is typically already loaded;
   -- override with AMI_CHAT_MODEL.
   model = { endpoint = endpoint, model = os.getenv("AMI_CHAT_MODEL") or "qwen3-coder" },
