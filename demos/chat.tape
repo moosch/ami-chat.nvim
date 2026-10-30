@@ -5,9 +5,9 @@
 # (../ami.nvim or ../ai-harness, or set $AMI_CORE).
 #
 # The panel is right-docked and semi-transparent by default, so the source file
-# stays visible (and shows faintly through it). Chat model defaults to
-# deepseek-coder (fast replies); override with $AMI_CHAT_MODEL. Lengthen the Sleep
-# after sending for slower models.
+# stays visible (and shows faintly through it). Chat model defaults to qwen3-coder
+# (best advisor replies, usually already loaded); override with $AMI_CHAT_MODEL.
+# Lengthen the Sleep after sending for slower models.
 
 Output demos/chat.gif
 
@@ -40,5 +40,5 @@ Type "What edge cases should Get handle, and how would you structure the errors?
 Escape
 Enter
 
-# --- wait for the streamed advice (deepseek is quick once warm) ---
-Sleep 16s
+# --- wait for the streamed advice ---
+Sleep 20s

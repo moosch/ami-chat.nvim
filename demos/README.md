@@ -11,7 +11,7 @@ a `.gif` and commit the `.gif`.
 vhs demos/chat.tape
 
 # or point at your server / pick the chat model:
-AMI_ENDPOINT=http://192.168.68.100:1234/v1 AMI_CHAT_MODEL=deepseek-coder vhs demos/chat.tape
+AMI_ENDPOINT=http://192.168.68.100:1234/v1 AMI_CHAT_MODEL=qwen3-coder vhs demos/chat.tape
 
 git add demos/chat.gif && git commit -m "docs: update demo gif"
 ```
