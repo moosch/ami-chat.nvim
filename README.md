@@ -4,14 +4,18 @@ The chat advisor panel for [ami](https://github.com/moosch/ami.nvim).
 
 A floating transcript + prompt where you discuss your thinking and get streamed,
 **advice-only** feedback grounded in your open file, selection, `README.md`/
-`PLAN.md`, and — via LSP — the files your code depends on. Includes the **branching
-history tree** (branch, switch, summarize). Extracted from ami core into its own
-extension so core stays a small runtime.
+`PLAN.md`, and — via LSP — the files your code depends on. It assembles each request
+and streams it straight to LM Studio (no daemon).
 
 It provides ami's `chat` capability (so other extensions can reach the panel) and a
-`chat` model slot. The panel UI is itself swappable — install
+`chat` model slot. The panel UI is swappable — install
 [`ami-chat-split.nvim`](https://github.com/moosch/ami-chat-split.nvim) for a
 split-window layout, or write your own `chat_ui` provider.
+
+For multi-turn memory, branching, and `:AmiTree`, install
+[`ami-history.nvim`](https://github.com/moosch/ami-history.nvim) (it provides the
+`history` capability). Without it, chat keeps an in-memory history for the current
+session only.
 
 ## Demo
 
@@ -53,7 +57,6 @@ register it:
 | `:AmiChat` | Toggle the panel (`<CR>` normal-mode = send, `<C-n>` new session, `q`/`<Esc>` hide) |
 | `:AmiAsk {text}` | One-shot question; visual mode sends the selection + its deps |
 | `:AmiNewSession [name]` | Start a fresh conversation |
-| `:AmiTree` | Conversation tree — `<CR>` switch, `s` summarize, `r` refresh, `q` close |
 
 Pick the chat model live with `:AmiModel chat`.
 

@@ -1,17 +1,17 @@
 -- ami-chat: the advisor chat panel for ami, as a standalone extension.
 --
--- The chat controller, its default floating renderer, and the conversation-tree
--- viewer, extracted from ami core so core is a pure runtime. Install alongside ami
--- and register it:
+-- The chat controller + its default floating renderer. It assembles each request
+-- and streams it straight to the model (no daemon), and emits chat lifecycle events.
+-- Install alongside ami and register it:
 --
 --   require("ami").setup({ extensions = { require("ami-chat") } })
 --
 -- It registers a "chat" model slot, provides the "chat" capability (so other
--- extensions reach the panel through api.chat.*), and adds the chat commands. The
--- panel UI is itself swappable: another extension can provide "chat_ui" (e.g.
--- ami-chat-split.nvim) and this controller will drive it instead of the bundled one.
+-- extensions reach the panel through api.chat.*), and adds the chat commands.
+-- Multi-turn history/branching is a separate extension (ami-history.nvim) that
+-- provides the "history" capability; the panel UI is swappable via "chat_ui"
+-- (e.g. ami-chat-split.nvim).
 local controller = require("ami-chat.controller")
-local tree = require("ami-chat.tree")
 
 return {
   name = "chat",
@@ -53,15 +53,10 @@ return {
       nargs = "?",
       fn = function(opts) controller.new_session(opts.args) end,
     },
-    AmiTree = {
-      desc = "Open the conversation tree (branch/switch/summarize)",
-      fn = function() tree.open(false) end,
-    },
   },
 
   setup = function(api)
     controller.init(api)
-    tree.init(api)
 
     -- Register the chat model slot (inherits ami's default when unset).
     api.models.register({
