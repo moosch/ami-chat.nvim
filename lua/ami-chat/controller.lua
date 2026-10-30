@@ -185,13 +185,15 @@ local function send(message, selection, range)
           table.insert(mem[M.session_id], { role = "user", content = message })
           table.insert(mem[M.session_id], { role = "assistant", content = assistant })
         end
-        A.emit("chat_turn_post", { session = M.session_id, ok = true, user = message, assistant = assistant })
+        A.emit("chat_turn_post",
+          { session = M.session_id, root = M.project_root(), ok = true, user = message, assistant = assistant })
       end,
       on_error = function(e)
         M.streaming = false
         r.set_status(nil)
         r.append("\n_[error: " .. e .. "]_\n")
-        A.emit("chat_turn_post", { session = M.session_id, ok = false, user = message, error = e })
+        A.emit("chat_turn_post",
+          { session = M.session_id, root = M.project_root(), ok = false, user = message, error = e })
       end,
     })
   end)
@@ -246,7 +248,7 @@ end
 function M.new_session(name)
   M.session_id = (name and vim.trim(name) ~= "") and vim.trim(name)
     or ("session-" .. os.date("%Y%m%d-%H%M%S"))
-  A.emit("chat_session", { session = M.session_id })
+  A.emit("chat_session", { session = M.session_id, root = M.project_root() })
   local r = ui()
   r.show()
   r.append("\n\n---\n\n_New session: `" .. M.session_id .. "`_\n")
