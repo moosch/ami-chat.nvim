@@ -13,6 +13,15 @@ It provides ami's `chat` capability (so other extensions can reach the panel) an
 [`ami-chat-split.nvim`](https://github.com/moosch/ami-chat-split.nvim) for a
 split-window layout, or write your own `chat_ui` provider.
 
+## Demo
+
+Discuss a problem, get advice-only feedback in the right-docked, see-through panel:
+
+![chat advisor demo](demos/chat.gif)
+
+> Rendered from [`demos/chat.tape`](demos/chat.tape); see
+> [`demos/README.md`](demos/README.md) to (re)generate it.
+
 ## Requirements
 
 - [ami.nvim](https://github.com/moosch/ami.nvim) (the runtime: daemon, model
