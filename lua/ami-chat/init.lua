@@ -21,6 +21,7 @@ return {
   config = {
     -- endpoint = nil,  -- inherit ami's default model.endpoint
     -- model = nil,     -- inherit ami's default model.model (pick via :AmiModel chat)
+    timeout_ms = 120000, -- give up if no token arrives within this long (cold load)
     ui = {
       position = "right",   -- "right" | "left" | "center"
       width = 0.4,          -- fraction of columns (<=1) or absolute columns (>1)
@@ -34,6 +35,7 @@ return {
       send = "<CR>",                 -- send (normal mode)
       send_alt = "<C-s>",            -- send (normal + insert; terminals permitting)
       new_session = "<C-n>",         -- new session (normal + insert)
+      stop = "<C-c>",                -- stop the in-flight reply (normal + insert)
       close = { "q", "<Esc>" },      -- hide the panel (normal mode)
       toggle = nil,                  -- e.g. "<leader>ac" to map :AmiChat globally
     },
@@ -61,6 +63,10 @@ return {
       desc = "Start a fresh advisor session",
       nargs = "?",
       fn = function(opts) controller.new_session(opts.args) end,
+    },
+    AmiStop = {
+      desc = "Stop the in-flight advisor reply",
+      fn = function() controller.cancel() end,
     },
   },
 

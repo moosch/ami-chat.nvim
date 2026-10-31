@@ -252,6 +252,7 @@ function M.open(ctl)
   map("n", km.send, ctl.submit)
   map({ "n", "i" }, km.send_alt, ctl.submit)
   map({ "n", "i" }, km.new_session, ctl.new_session)
+  map({ "n", "i" }, km.stop, ctl.stop)
   map("n", km.close, ctl.close)
 
   vim.cmd("startinsert")

@@ -57,8 +57,10 @@ register it:
 | `:AmiChat` | Toggle the panel (`<CR>` normal-mode = send, `<C-n>` new session, `q`/`<Esc>` hide) |
 | `:AmiAsk {text}` | One-shot question; visual mode sends the selection + its deps |
 | `:AmiNewSession [name]` | Start a fresh conversation |
+| `:AmiStop` | Stop the in-flight reply (also `<C-c>` in the panel) |
 
-Pick the chat model live with `:AmiModel chat`.
+Pick the chat model live with `:AmiModel chat`. A reply also stops if you close the
+panel, and gives up on its own if no token arrives within `timeout_ms`.
 
 ## Configuration
 
@@ -68,6 +70,7 @@ Options live under `chat` in ami's `setup()`:
 | --- | --- | --- |
 | `endpoint` | `nil` | provider base URL; `nil` ⇒ ami's default `model.endpoint` |
 | `model` | `nil` | chat model; `nil` ⇒ ami's default `model.model` (pick via `:AmiModel chat`) |
+| `timeout_ms` | `120000` | give up if no token arrives within this long (covers cold model loads) |
 | `ui.position` | `"right"` | `"right"` \| `"left"` \| `"center"` |
 | `ui.width` / `ui.height` | `0.4` / `0.9` | fraction of screen (`<=1`) or absolute cells (`>1`) |
 | `ui.opacity` | `0.8` | `0`..`1`; lower = more see-through (via `winblend`) |
@@ -75,6 +78,7 @@ Options live under `chat` in ami's `setup()`:
 | `keymaps.send` | `"<CR>"` | send the prompt (normal mode) |
 | `keymaps.send_alt` | `"<C-s>"` | send (normal + insert; some terminals eat `<C-s>`) |
 | `keymaps.new_session` | `"<C-n>"` | start a new session (normal + insert) |
+| `keymaps.stop` | `"<C-c>"` | stop the in-flight reply (normal + insert) |
 | `keymaps.close` | `{ "q", "<Esc>" }` | hide the panel (normal mode) |
 | `keymaps.toggle` | `nil` | optional global normal-mode map for `:AmiChat` (e.g. `"<leader>ac"`) |
 

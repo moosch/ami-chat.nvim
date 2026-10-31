@@ -80,6 +80,7 @@ local function ctl()
     submit = M.submit,
     new_session = function() M.new_session() end,
     close = M.close,
+    stop = M.cancel,
   }
 end
 
@@ -99,6 +100,7 @@ end
 -- Chat service (also the "chat" capability surface) ---------------------------
 
 function M.close()
+  M.cancel() -- don't leave a request streaming into a hidden panel
   ui().close()
 end
 
@@ -166,15 +168,16 @@ local function send(message, selection, range)
     local req = { model = eff.model, messages = messages, stream = true }
     A.emit("chat_turn_pre", req)
 
+    local timeout = (require("ami.config").options.chat or {}).timeout_ms
     local reply = {}
-    A.client.stream_chat(eff.endpoint, req, {
+    M._inflight = A.client.stream_chat(eff.endpoint, req, {
       on_token = function(c)
         r.set_status(nil)
         reply[#reply + 1] = c
         r.append(c)
       end,
       on_done = function()
-        M.streaming = false
+        M.streaming, M._inflight = false, nil
         r.set_status(nil)
         r.append("\n")
         local assistant = table.concat(reply)
@@ -189,14 +192,29 @@ local function send(message, selection, range)
           { session = M.session_id, root = M.project_root(), ok = true, user = message, assistant = assistant })
       end,
       on_error = function(e)
-        M.streaming = false
+        M.streaming, M._inflight = false, nil
         r.set_status(nil)
-        r.append("\n_[error: " .. e .. "]_\n")
+        if M._cancelled then
+          M._cancelled = false
+          r.append("\n_[stopped]_\n")
+        else
+          r.append("\n_[error: " .. e .. "]_\n")
+        end
         A.emit("chat_turn_post",
           { session = M.session_id, root = M.project_root(), ok = false, user = message, error = e })
       end,
-    })
+    }, { timeout_ms = timeout })
   end)
+end
+
+--- Stop the in-flight reply, if any (api.chat/:AmiStop/panel key). The killed
+--- request surfaces through on_error, which renders "[stopped]" not an error.
+function M.cancel()
+  if not (M.streaming and M._inflight) then
+    return
+  end
+  M._cancelled = true
+  pcall(function() M._inflight:kill("sigterm") end)
 end
 
 --- Submit the current draft. Clears it; keeps the chat open.
