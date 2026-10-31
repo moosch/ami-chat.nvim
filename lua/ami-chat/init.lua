@@ -91,5 +91,16 @@ return {
     if toggle then
       vim.keymap.set("n", toggle, controller.toggle, { desc = "ami: toggle chat panel" })
     end
+
+    api.health(function(report)
+      local eff = api.models.effective("chat")
+      report.info(("chat model: %s @ %s"):format(tostring(eff.model), tostring(eff.endpoint)))
+      report.info("reply timeout: " .. tostring(api.config.timeout_ms) .. "ms")
+      if api.resolve("history") then
+        report.ok("history provider present (multi-turn persisted)")
+      else
+        report.info("no history provider — in-memory, current session only (install ami-history.nvim)")
+      end
+    end)
   end,
 }
