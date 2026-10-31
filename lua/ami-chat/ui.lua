@@ -202,11 +202,30 @@ function M.close()
 end
 
 --- Open the full interactive panel and focus the input.
+-- The prompt keymaps, from config (chat.keymaps), with built-in defaults.
+local function keymaps()
+  return (require("ami.config").options.chat or {}).keymaps or {}
+end
+
+-- Normalize a config key (string, list, or nil/false) to a list of lhs strings.
+local function keys(v)
+  if not v then
+    return {}
+  end
+  return type(v) == "table" and v or { v }
+end
+
+local function first(v, fallback)
+  local k = keys(v)[1]
+  return k or fallback
+end
+
 ---@param ctl table { submit, new_session, close }
 function M.open(ctl)
   ensure_prompt_buf()
   M.show()
 
+  local km = keymaps()
   local l = layout()
   M.prompt_win = vim.api.nvim_open_win(M.prompt_buf, true, {
     relative = "editor",
@@ -216,7 +235,8 @@ function M.open(ctl)
     col = l.col,
     style = "minimal",
     border = "rounded",
-    title = " Ask  (⏎ in normal mode = send · ⌃n new · q close) ",
+    title = (" Ask  (%s send · %s new · %s close) "):format(
+      first(km.send, "<CR>"), first(km.new_session, "<C-n>"), first(km.close, "q")),
     title_pos = "center",
   })
   vim.wo[M.prompt_win].wrap = true
@@ -224,11 +244,15 @@ function M.open(ctl)
   apply_blend(M.prompt_win)
 
   local opts = { buffer = M.prompt_buf, nowait = true, silent = true }
-  vim.keymap.set("n", "<CR>", ctl.submit, opts)
-  vim.keymap.set({ "n", "i" }, "<C-s>", ctl.submit, opts)
-  vim.keymap.set({ "n", "i" }, "<C-n>", ctl.new_session, opts)
-  vim.keymap.set("n", "q", ctl.close, opts)
-  vim.keymap.set("n", "<Esc>", ctl.close, opts)
+  local function map(modes, lhs, rhs)
+    for _, k in ipairs(keys(lhs)) do
+      vim.keymap.set(modes, k, rhs, opts)
+    end
+  end
+  map("n", km.send, ctl.submit)
+  map({ "n", "i" }, km.send_alt, ctl.submit)
+  map({ "n", "i" }, km.new_session, ctl.new_session)
+  map("n", km.close, ctl.close)
 
   vim.cmd("startinsert")
 end

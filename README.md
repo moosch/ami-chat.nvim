@@ -72,9 +72,17 @@ Options live under `chat` in ami's `setup()`:
 | `ui.width` / `ui.height` | `0.4` / `0.9` | fraction of screen (`<=1`) or absolute cells (`>1`) |
 | `ui.opacity` | `0.8` | `0`..`1`; lower = more see-through (via `winblend`) |
 | `ui.margin` | `2` | columns of gap from the screen edge |
+| `keymaps.send` | `"<CR>"` | send the prompt (normal mode) |
+| `keymaps.send_alt` | `"<C-s>"` | send (normal + insert; some terminals eat `<C-s>`) |
+| `keymaps.new_session` | `"<C-n>"` | start a new session (normal + insert) |
+| `keymaps.close` | `{ "q", "<Esc>" }` | hide the panel (normal mode) |
+| `keymaps.toggle` | `nil` | optional global normal-mode map for `:AmiChat` (e.g. `"<leader>ac"`) |
 
-> `ui.*` applies to the built-in floating panel. When a `chat_ui` provider like
-> `ami-chat-split.nvim` is active, that extension's own options apply instead.
+Each `keymaps.*` value is a string, a list of strings, or `false` to disable that
+binding. `ui.*`/`keymaps.*` apply to the built-in floating panel; when a `chat_ui`
+provider like `ami-chat-split.nvim` is active, that extension's own options apply.
+You can also always `vim.keymap.set` the `:AmiChat`/`:AmiAsk`/`:AmiNewSession`
+commands yourself.
 
 ## Syntax highlighting
 

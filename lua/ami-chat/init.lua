@@ -28,6 +28,15 @@ return {
       opacity = 0.8,        -- 0..1; lower = more see-through (via 'winblend')
       margin = 2,           -- columns of gap from the screen edge (right/left)
     },
+    -- In-panel keys (each a string, a list of strings, or false to disable).
+    -- `toggle` optionally maps :AmiChat globally (normal mode); nil = don't.
+    keymaps = {
+      send = "<CR>",                 -- send (normal mode)
+      send_alt = "<C-s>",            -- send (normal + insert; terminals permitting)
+      new_session = "<C-n>",         -- new session (normal + insert)
+      close = { "q", "<Esc>" },      -- hide the panel (normal mode)
+      toggle = nil,                  -- e.g. "<leader>ac" to map :AmiChat globally
+    },
   },
 
   commands = {
@@ -70,5 +79,11 @@ return {
     -- Offer the chat capability so other extensions (e.g. proactive) can reach the
     -- panel through api.chat.*.
     api.provide("chat", controller)
+
+    -- Optional global mapping for toggling the panel.
+    local toggle = (api.config.keymaps or {}).toggle
+    if toggle then
+      vim.keymap.set("n", toggle, controller.toggle, { desc = "ami: toggle chat panel" })
+    end
   end,
 }
