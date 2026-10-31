@@ -72,6 +72,19 @@ local function apply_blend(win)
   vim.wo[win].winblend = math.max(0, math.min(100, blend))
 end
 
+-- Highlight the transcript like telescope's previewer: prefer treesitter (its
+-- markdown parser highlights fenced code blocks per language via injections),
+-- falling back to the filetype's regex syntax when no parser is available.
+local function start_highlight(buf)
+  local ts = vim.treesitter
+  if ts and ts.highlighter and ts.highlighter.active[buf] then
+    return -- already highlighting
+  end
+  if not (ts and ts.start and pcall(ts.start, buf, "markdown")) then
+    pcall(function() vim.bo[buf].syntax = "markdown" end)
+  end
+end
+
 local function ensure_transcript_buf()
   if M.transcript_buf and vim.api.nvim_buf_is_valid(M.transcript_buf) then
     return
@@ -80,6 +93,7 @@ local function ensure_transcript_buf()
   vim.bo[M.transcript_buf].bufhidden = "hide"
   vim.bo[M.transcript_buf].filetype = "markdown"
   vim.api.nvim_buf_set_name(M.transcript_buf, "ami://chat")
+  start_highlight(M.transcript_buf)
 end
 
 local function transcript_visible()
