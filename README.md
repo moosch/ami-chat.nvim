@@ -76,6 +76,23 @@ Options live under `chat` in ami's `setup()`:
 > `ui.*` applies to the built-in floating panel. When a `chat_ui` provider like
 > `ami-chat-split.nvim` is active, that extension's own options apply instead.
 
+## Syntax highlighting
+
+The transcript is a markdown buffer highlighted like telescope's previewer — it uses
+**whatever's available in your Neovim**:
+
+- **Treesitter** (preferred): started automatically when the `markdown` parser is
+  installed. This highlights headers, inline code, and — via markdown injections —
+  fenced code blocks **in their own language**. Per-language code highlighting needs
+  that language's parser too, e.g. `:TSInstall go lua` (install `markdown` and
+  `markdown_inline` for the base).
+- **Regex syntax** (fallback): if no treesitter parser is available, it falls back to
+  the built-in markdown syntax (headers + inline code; fenced blocks per
+  `vim.g.markdown_fenced_languages`).
+
+Either way it's automatic and has no hard dependency — with nothing installed you
+still get plain, readable text.
+
 ## Replacing the panel UI
 
 The chat controller draws nothing itself — it drives whatever `chat_ui` provider is
