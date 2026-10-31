@@ -40,7 +40,6 @@ register it:
 {
   "moosch/ami.nvim",
   dependencies = { "moosch/ami-chat.nvim" },
-  build = "make build",
   config = function()
     require("ami").setup({
       extensions = { require("ami-chat") },
