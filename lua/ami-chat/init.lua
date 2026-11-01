@@ -37,6 +37,8 @@ return {
       new_session = "<C-n>",         -- new session (normal + insert)
       stop = "<C-c>",                -- stop the in-flight reply (normal + insert)
       close = { "q", "<Esc>" },      -- hide the panel (normal mode)
+      history_prev = "<Up>",         -- recall an older sent message (at the input top)
+      history_next = "<Down>",       -- recall a newer one / restore the draft (at the bottom)
       toggle = nil,                  -- e.g. "<leader>ac" to map :AmiChat globally
     },
   },

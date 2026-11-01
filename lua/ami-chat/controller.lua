@@ -38,6 +38,12 @@ local A = nil -- the ami extension API, set in M.init()
 -- Keyed by session id; each entry is a list of { role, content } turns.
 local mem = {}
 
+-- Recallable history of messages sent from the input box (oldest → newest),
+-- shared across sessions for this editor session. Drives the input's up/down
+-- recall in the renderer; separate from conversation history, and not persisted.
+local input_history = {}
+local INPUT_HISTORY_MAX = 200
+
 --- Capture the ami extension API. Call once from the extension's setup().
 function M.init(api)
   A = api
@@ -81,7 +87,31 @@ local function ctl()
     new_session = function() M.new_session() end,
     close = M.close,
     stop = M.cancel,
+    input_history = M.input_history,
   }
+end
+
+--- Record a message sent from the input box for up/down recall. De-dupes the
+--- immediately previous entry (pressing send twice on the same text) and caps the
+--- list. Exposed to the renderer via ctl().input_history.
+function M.record_input(message)
+  if message == nil or message == "" then
+    return
+  end
+  if input_history[#input_history] == message then
+    return
+  end
+  input_history[#input_history + 1] = message
+  if #input_history > INPUT_HISTORY_MAX then
+    table.remove(input_history, 1)
+  end
+end
+
+--- The recallable input history (oldest → newest). The renderer reads this to
+--- cycle previously sent messages in the prompt.
+---@return string[]
+function M.input_history()
+  return input_history
 end
 
 local function capture_source()
@@ -231,6 +261,7 @@ function M.submit()
   if message == "" then
     return
   end
+  M.record_input(message)
   ui().clear_input()
   send(message)
 end

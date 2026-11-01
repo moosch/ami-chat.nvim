@@ -79,6 +79,8 @@ Options live under `chat` in ami's `setup()`:
 | `keymaps.new_session` | `"<C-n>"` | start a new session (normal + insert) |
 | `keymaps.stop` | `"<C-c>"` | stop the in-flight reply (normal + insert) |
 | `keymaps.close` | `{ "q", "<Esc>" }` | hide the panel (normal mode) |
+| `keymaps.history_prev` | `"<Up>"` | recall an older sent message (when the cursor is on the input's first line) |
+| `keymaps.history_next` | `"<Down>"` | recall a newer one, then restore your draft (when on the last line) |
 | `keymaps.toggle` | `nil` | optional global normal-mode map for `:AmiChat` (e.g. `"<leader>ac"`) |
 
 Each `keymaps.*` value is a string, a list of strings, or `false` to disable that
@@ -86,6 +88,16 @@ binding. `ui.*`/`keymaps.*` apply to the built-in floating panel; when a `chat_u
 provider like `ami-chat-split.nvim` is active, that extension's own options apply.
 You can also always `vim.keymap.set` the `:AmiChat`/`:AmiAsk`/`:AmiNewSession`
 commands yourself.
+
+### Recalling previous messages
+
+The input remembers the messages you've sent this editor session. With the cursor on
+the **first** line of the prompt, `<Up>` cycles back through them (newest first); with
+the cursor on the **last** line, `<Down>` cycles forward again. Anywhere else in a
+multi-line draft the arrows just move the cursor, as usual. Anything you'd already
+typed is stashed when you start browsing and restored when you press `<Down>` past the
+newest message — so recalling never loses your half-written draft. The list is shared
+across sessions for the current Neovim session and isn't persisted to disk.
 
 ## Syntax highlighting
 

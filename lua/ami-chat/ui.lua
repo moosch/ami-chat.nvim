@@ -13,6 +13,10 @@ local M = {
   prompt_buf = nil,
   prompt_win = nil,
   _status_text = nil,
+  -- Up/down recall state for the input: idx = nil means editing the live draft;
+  -- otherwise it counts steps back from the newest sent message (1 = newest).
+  -- draft holds the unsent text stashed when recall begins, restored on the way back.
+  _hist = { idx = nil, draft = nil },
 }
 
 -- Chat UI options live under `chat` (this extension's config namespace).
@@ -188,6 +192,44 @@ function M.clear_input()
   if M.prompt_buf and vim.api.nvim_buf_is_valid(M.prompt_buf) then
     vim.api.nvim_buf_set_lines(M.prompt_buf, 0, -1, false, {})
   end
+  -- A fresh draft starts: next Up begins recall from the newest message again.
+  M._hist = { idx = nil, draft = nil }
+end
+
+-- Pure up/down recall logic, factored out so it can be unit-tested without
+-- windows. `dir` is "prev" (older) or "next" (newer); `list` is the sent messages
+-- oldest→newest; `state` = { idx, draft } (see the M table). Returns:
+--   handled  — true if we consumed the key (false ⇒ let the real arrow move)
+--   text     — the input to show, or nil to leave it unchanged
+--   state    — the updated recall state
+---@return boolean handled, string|nil text, table state
+function M._recall(dir, list, state, current)
+  state = state or { idx = nil, draft = nil }
+  local n = #list
+  if dir == "prev" then
+    if n == 0 then
+      return false, nil, state
+    end
+    if state.idx == nil then
+      state.draft = current or "" -- remember the half-typed draft
+      state.idx = 1
+    elseif state.idx < n then
+      state.idx = state.idx + 1
+    else
+      return true, nil, state -- already at the oldest; swallow the key
+    end
+    return true, list[n - state.idx + 1], state
+  else -- "next"
+    if state.idx == nil then
+      return false, nil, state -- editing the live draft; nothing newer to show
+    elseif state.idx > 1 then
+      state.idx = state.idx - 1
+      return true, list[n - state.idx + 1], state
+    else
+      state.idx = nil -- past the newest: restore the stashed draft
+      return true, state.draft or "", state
+    end
+  end
 end
 
 function M.close()
@@ -220,9 +262,10 @@ local function first(v, fallback)
   return k or fallback
 end
 
----@param ctl table { submit, new_session, close }
+---@param ctl table { submit, new_session, close, input_history }
 function M.open(ctl)
   ensure_prompt_buf()
+  M._hist = { idx = nil, draft = nil } -- start on a fresh draft each open
   M.show()
 
   local km = keymaps()
@@ -254,6 +297,49 @@ function M.open(ctl)
   map({ "n", "i" }, km.new_session, ctl.new_session)
   map({ "n", "i" }, km.stop, ctl.stop)
   map("n", km.close, ctl.close)
+
+  -- Recall previously sent messages with up/down, but only at the input's edges so
+  -- the arrows still move the cursor within a multi-line draft: Up recalls an older
+  -- message when on the first line, Down recalls a newer one (or restores the
+  -- stashed draft) when on the last line. Elsewhere the real arrow key is passed
+  -- through. The half-typed draft is remembered and restored on the way back down.
+  local function set_input(text)
+    local lines = vim.split(text or "", "\n", { plain = true })
+    vim.api.nvim_buf_set_lines(M.prompt_buf, 0, -1, false, lines)
+    if M.prompt_win and vim.api.nvim_win_is_valid(M.prompt_win) then
+      local lastrow = #lines
+      vim.api.nvim_win_set_cursor(M.prompt_win, { lastrow, #(lines[lastrow] or "") })
+    end
+  end
+
+  local function nav(dir, key)
+    local list = (ctl.input_history and ctl.input_history()) or {}
+    local row = vim.api.nvim_win_get_cursor(0)[1]
+    -- Let a visible completion menu own the arrows.
+    local at_edge = vim.fn.pumvisible() == 0
+      and ((dir == "prev" and row == 1)
+        or (dir == "next" and row == vim.api.nvim_buf_line_count(M.prompt_buf)))
+    if at_edge then
+      local handled, text, state = M._recall(dir, list, M._hist, M.read_input())
+      M._hist = state
+      if handled then
+        if text ~= nil then
+          set_input(text)
+        end
+        return
+      end
+    end
+    -- Not recalling: let the arrow do its normal thing (move the cursor).
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(key, true, false, true), "n", false)
+  end
+
+  local function bind_nav(lhs, dir)
+    for _, k in ipairs(keys(lhs)) do
+      vim.keymap.set({ "n", "i" }, k, function() nav(dir, k) end, opts)
+    end
+  end
+  bind_nav(km.history_prev, "prev")
+  bind_nav(km.history_next, "next")
 
   vim.cmd("startinsert")
 end
