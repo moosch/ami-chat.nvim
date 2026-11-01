@@ -160,6 +160,13 @@ local function send(message, selection, range)
       M.session_id, tostring(eff.model), #block, #(ctx.dep_paths or {})))
 
     local messages = { { role = "system", content = system_content(block) } }
+    -- System-message contributions (persona, house style, …) via the chat.system
+    -- collector; chat composes them, right after the advisor prompt.
+    for _, s in ipairs(A.emit_collect("chat.system", { session = M.session_id, ctx = ctx })) do
+      if type(s) == "string" and vim.trim(s) ~= "" then
+        messages[#messages + 1] = { role = "system", content = s }
+      end
+    end
     vim.list_extend(messages, history_messages())
     messages[#messages + 1] = { role = "user", content = message }
 
