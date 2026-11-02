@@ -171,6 +171,23 @@ The transcript is a markdown buffer highlighted like telescope's previewer — i
 Either way it's automatic and has no hard dependency — with nothing installed you
 still get plain, readable text.
 
+### Role colours
+
+On top of the markdown highlighting, each turn's header is tinted so the conversation
+is easy to scan — **You**, **Advisor**, **Shell** and **💡 Suggestion** each get a
+distinct accent, with muted/error tints for status lines. The colours are **derived
+from your colourscheme** (borrowed from the `Diagnostic*` groups) and refreshed on
+`:colorscheme`, so they adapt to light/dark automatically.
+
+Override any of them — set the `AmiChat*` groups (ideally in a `ColorScheme`
+autocmd, since they're re-derived on theme change):
+
+```lua
+vim.api.nvim_set_hl(0, "AmiChatRoleUser", { fg = "#7aa2f7", bold = true })
+vim.api.nvim_set_hl(0, "AmiChatRoleAdvisor", { fg = "#bb9af7", bold = true })
+-- also: AmiChatRoleShell, AmiChatRoleSuggestion, AmiChatError, AmiChatMuted
+```
+
 ## Replacing the panel UI
 
 The chat controller draws nothing itself — it drives whatever `chat_ui` provider is

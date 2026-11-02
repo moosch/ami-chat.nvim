@@ -89,6 +89,84 @@ local function start_highlight(buf)
   end
 end
 
+-- Role styling --------------------------------------------------------------
+-- On top of the markdown highlighting, colour each turn's header line so the
+-- conversation is easy to scan: You / Advisor / Shell / 💡 Suggestion each get a
+-- distinct, theme-derived accent, plus muted/error tints for status lines. Applied
+-- as extmarks (priority over treesitter); colours are copied from the colorscheme's
+-- semantic groups and refreshed on :colorscheme, so they adapt to light/dark.
+M.style_ns = vim.api.nvim_create_namespace("ami_chat_style")
+
+-- group -> { source groups to borrow fg from (first with a real fg wins), attrs }.
+-- The Diagnostic family is used because themes colour it distinctly and reliably:
+-- You = teal/hint, Advisor = blue/info, Shell = green, Suggestion = yellow, error =
+-- red. Each falls back to a syntax group for minimal themes that skip Diagnostic*.
+local HL_GROUPS = {
+  AmiChatRoleUser = { src = { "DiagnosticHint", "Identifier" }, bold = true },
+  AmiChatRoleAdvisor = { src = { "DiagnosticInfo", "Function" }, bold = true },
+  AmiChatRoleShell = { src = { "DiagnosticOk", "String" }, bold = true },
+  AmiChatRoleSuggestion = { src = { "DiagnosticWarn", "WarningMsg" }, bold = true },
+  AmiChatError = { src = { "DiagnosticError", "ErrorMsg" } },
+  AmiChatMuted = { src = { "Comment" }, italic = true },
+}
+
+-- line pattern -> highlight group (first match wins).
+local LINE_HL = {
+  { pat = "^### You%s*$", hl = "AmiChatRoleUser" },
+  { pat = "^### Advisor%s*$", hl = "AmiChatRoleAdvisor" },
+  { pat = "^### Shell%s*$", hl = "AmiChatRoleShell" },
+  { pat = "Suggestion%s*$", hl = "AmiChatRoleSuggestion" }, -- "### 💡 Suggestion"
+  { pat = "^_%[error.*_%s*$", hl = "AmiChatError" },
+  { pat = "^_%[stopped%]_%s*$", hl = "AmiChatMuted" },
+  { pat = "^⏳", hl = "AmiChatMuted" },
+  { pat = "^_New session:.*_%s*$", hl = "AmiChatMuted" },
+}
+
+-- First fg found among the candidate source groups (resolving links), or nil.
+local function first_fg(srcs)
+  for _, name in ipairs(srcs) do
+    local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+    if ok and type(h) == "table" and h.fg then
+      return h.fg
+    end
+  end
+  return nil
+end
+
+--- (Re)define the ami-chat highlight groups from the current colorscheme. Borrows
+--- each role's colour from a semantic group (bold), falling back to a plain link.
+function M.define_highlights()
+  for name, d in pairs(HL_GROUPS) do
+    local fg = first_fg(d.src)
+    if fg then
+      vim.api.nvim_set_hl(0, name, { fg = fg, bold = d.bold, italic = d.italic })
+    else
+      vim.api.nvim_set_hl(0, name, { link = d.src[#d.src] })
+    end
+  end
+end
+
+-- Highlight the role-header lines in [from, to] (0-indexed, inclusive).
+local function style_range(buf, from, to)
+  from = math.max(0, from)
+  local lines = vim.api.nvim_buf_get_lines(buf, from, to + 1, false)
+  vim.api.nvim_buf_clear_namespace(buf, M.style_ns, from, to + 1)
+  for i, line in ipairs(lines) do
+    for _, rule in ipairs(LINE_HL) do
+      if line:match(rule.pat) then
+        local lnum = from + i - 1
+        pcall(vim.api.nvim_buf_set_extmark, buf, M.style_ns, lnum, 0, {
+          end_row = lnum,
+          end_col = #line,
+          hl_group = rule.hl,
+          priority = 200,
+        })
+        break
+      end
+    end
+  end
+end
+
 local function ensure_transcript_buf()
   if M.transcript_buf and vim.api.nvim_buf_is_valid(M.transcript_buf) then
     return
@@ -98,6 +176,14 @@ local function ensure_transcript_buf()
   vim.bo[M.transcript_buf].filetype = "markdown"
   vim.api.nvim_buf_set_name(M.transcript_buf, "ami://chat")
   start_highlight(M.transcript_buf)
+  if not M._hl_installed then
+    M._hl_installed = true
+    M.define_highlights()
+    vim.api.nvim_create_autocmd("ColorScheme", {
+      group = vim.api.nvim_create_augroup("AmiChatHighlights", { clear = true }),
+      callback = M.define_highlights,
+    })
+  end
 end
 
 local function transcript_visible()
@@ -143,6 +229,7 @@ function M.append(text)
   local last_line = vim.api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or ""
   local parts = vim.split(last_line .. text, "\n", { plain = true })
   vim.api.nvim_buf_set_lines(buf, last, last + 1, false, parts)
+  style_range(buf, last, vim.api.nvim_buf_line_count(buf) - 1)
   if transcript_visible() then
     vim.api.nvim_win_set_cursor(M.transcript_win, { vim.api.nvim_buf_line_count(buf), 0 })
   end
@@ -151,6 +238,7 @@ end
 function M.clear()
   ensure_transcript_buf()
   vim.api.nvim_buf_set_lines(M.transcript_buf, 0, -1, false, {})
+  vim.api.nvim_buf_clear_namespace(M.transcript_buf, M.style_ns, 0, -1)
 end
 
 function M.set_status(text)
