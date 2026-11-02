@@ -254,7 +254,90 @@ function M.cancel()
   pcall(function() M._inflight:kill("sigterm") end)
 end
 
---- Submit the current draft. Clears it; keeps the chat open.
+-- Slash commands ------------------------------------------------------------
+-- A message beginning with "/" is a command, not a prompt to the model. ami-chat
+-- ships a couple of built-ins; extensions contribute more by returning a
+-- { name = { desc, fn } } table from the "chat.commands" collector (e.g.
+-- ami-history adds /compact). A handler receives ctx = { args, session, append,
+-- controller }. Escape a literal leading slash by doubling it ("//ask …").
+
+local builtins
+
+-- All commands: built-ins plus any contributed via the chat.commands collector
+-- (later contributors win). Collected fresh each dispatch so newly loaded
+-- extensions appear without a restart.
+local function all_commands()
+  local cmds = {}
+  for name, spec in pairs(builtins) do
+    cmds[name] = spec
+  end
+  for _, tbl in ipairs(A.emit_collect("chat.commands")) do
+    if type(tbl) == "table" then
+      for name, spec in pairs(tbl) do
+        if type(spec) == "table" and type(spec.fn) == "function" then
+          cmds[name:lower()] = spec
+        end
+      end
+    end
+  end
+  return cmds
+end
+
+builtins = {
+  help = {
+    desc = "List the available chat commands",
+    fn = function(ctx)
+      local cmds = all_commands()
+      local names = vim.tbl_keys(cmds)
+      table.sort(names)
+      local lines = { "", "**Chat commands**", "" }
+      for _, n in ipairs(names) do
+        lines[#lines + 1] = ("- `/%s` — %s"):format(n, cmds[n].desc or "")
+      end
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = "_(prefix a real message with `//` to send text that starts with a slash)_"
+      ctx.append("\n" .. table.concat(lines, "\n") .. "\n")
+    end,
+  },
+  new = {
+    desc = "Start a fresh session (/new [name])",
+    fn = function(ctx)
+      M.new_session(ctx.args ~= "" and ctx.args or nil)
+    end,
+  },
+}
+
+-- Parse "/name rest of the args" → name, args.
+local function parse_command(message)
+  local name, args = message:match("^/(%S+)%s*(.-)%s*$")
+  return name, args or ""
+end
+
+--- Run a slash command typed into the input.
+function M.run_command(message)
+  local name, args = parse_command(message)
+  local r = ui()
+  r.show()
+  r.append("\n\n### You\n\n" .. message .. "\n")
+  if not name then
+    r.append("\n_Type a command after the slash, e.g. `/help`._\n")
+    return
+  end
+  local cmd = all_commands()[name:lower()]
+  if not cmd then
+    r.append(("\n_Unknown command `/%s`. Try `/help`._\n"):format(name))
+    return
+  end
+  local ctx = { args = args, session = M.session_id, append = M.append, controller = M }
+  local ok, err = pcall(cmd.fn, ctx)
+  if not ok then
+    A.log.error(("chat: command /%s failed — %s"):format(name, tostring(err)))
+    r.append(("\n_Command `/%s` errored: %s_\n"):format(name, tostring(err)))
+  end
+end
+
+--- Submit the current draft. Clears it; keeps the chat open. A leading "/" routes
+--- to a slash command instead of the model ("//" escapes it to a literal message).
 function M.submit()
   local message = vim.trim(ui().read_input() or "")
   A.log.debug(("submit: invoked (%d chars)"):format(#message))
@@ -263,7 +346,13 @@ function M.submit()
   end
   M.record_input(message)
   ui().clear_input()
-  send(message)
+  if message:sub(1, 2) == "//" then
+    send(message:sub(2)) -- escaped: send text that really does start with a slash
+  elseif message:sub(1, 1) == "/" then
+    M.run_command(message)
+  else
+    send(message)
+  end
 end
 
 --- One-shot ask (e.g. from :AmiAsk), optionally with a selection/range.

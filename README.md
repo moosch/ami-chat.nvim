@@ -61,6 +61,31 @@ register it:
 Pick the chat model live with `:AmiModel chat`. A reply also stops if you close the
 panel, and gives up on its own if no token arrives within `timeout_ms`.
 
+## Slash commands
+
+A message typed into the input that begins with `/` is a **command**, not a prompt to
+the model. Type `/help` to list what's available:
+
+| Command | What it does | From |
+| --- | --- | --- |
+| `/help` | List the available commands | ami-chat |
+| `/new [name]` | Start a fresh session | ami-chat |
+| `/compact`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
+
+`/compact` is the context-saver: on a long conversation it folds everything so far
+into a single summary (preserving decisions, constraints, and open questions). The
+reduction applies to the **next** turn; your transcript scrollback is kept as-is as a
+readable log. It needs `ami-history.nvim` (which owns summarization); without it the
+command simply isn't listed.
+
+To send a message that genuinely starts with a slash, double it: `//what about /tmp`
+sends `/what about /tmp`.
+
+**Extensions can add their own commands** by returning a `{ name = { desc, fn } }`
+table from the `chat.commands` collector — see
+[`docs/extensions.md`](https://github.com/moosch/ami.nvim/blob/main/docs/extensions.md).
+Commands run in-editor; ami-chat doesn't shell out.
+
 ## Configuration
 
 Options live under `chat` in ami's `setup()`:
