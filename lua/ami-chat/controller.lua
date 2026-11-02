@@ -88,6 +88,7 @@ local function ctl()
     close = M.close,
     stop = M.cancel,
     input_history = M.input_history,
+    commands = M.command_list,
   }
 end
 
@@ -306,6 +307,18 @@ builtins = {
     end,
   },
 }
+
+--- The available slash commands as a sorted list of { name, desc }. The renderer
+--- reads this to offer a completion popup when the input starts with "/".
+---@return { name: string, desc: string }[]
+function M.command_list()
+  local out = {}
+  for name, spec in pairs(all_commands()) do
+    out[#out + 1] = { name = name, desc = spec.desc or "" }
+  end
+  table.sort(out, function(a, b) return a.name < b.name end)
+  return out
+end
 
 -- Parse "/name rest of the args" → name, args.
 local function parse_command(message)

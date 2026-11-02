@@ -64,19 +64,23 @@ panel, and gives up on its own if no token arrives within `timeout_ms`.
 ## Slash commands
 
 A message typed into the input that begins with `/` is a **command**, not a prompt to
-the model. Type `/help` to list what's available:
+the model. Type `/` at the start of an empty prompt and a **popup lists the available
+commands** (name + description), narrowing as you type — like Claude/OpenCode. Move
+through it with the arrows (or `<C-n>`/`<C-p>`) and accept with `<Tab>` or `<CR>`; or
+just `/help` to print the list into the transcript.
 
 | Command | What it does | From |
 | --- | --- | --- |
 | `/help` | List the available commands | ami-chat |
 | `/new [name]` | Start a fresh session | ami-chat |
-| `/compact`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
+| `/compact [keep=N]`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
 
 `/compact` is the context-saver: on a long conversation it folds everything so far
-into a single summary (preserving decisions, constraints, and open questions). The
-reduction applies to the **next** turn; your transcript scrollback is kept as-is as a
-readable log. It needs `ami-history.nvim` (which owns summarization); without it the
-command simply isn't listed.
+into a single summary (preserving decisions, constraints, and open questions). Pass
+`keep=N` to leave the **last N turns verbatim** and summarize only what came before
+them (e.g. `/compact keep=2`). The reduction applies to the **next** turn; your
+transcript scrollback is kept as-is as a readable log. It needs `ami-history.nvim`
+(which owns summarization); without it the command simply isn't listed.
 
 To send a message that genuinely starts with a slash, double it: `//what about /tmp`
 sends `/what about /tmp`.

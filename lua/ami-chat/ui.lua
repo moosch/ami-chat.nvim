@@ -233,6 +233,10 @@ function M._recall(dir, list, state, current)
 end
 
 function M.close()
+  if M._saved_completeopt then
+    vim.o.completeopt = M._saved_completeopt
+    M._saved_completeopt = nil
+  end
   if M.prompt_win and vim.api.nvim_win_is_valid(M.prompt_win) then
     vim.api.nvim_win_close(M.prompt_win, true)
   end
@@ -242,6 +246,33 @@ function M.close()
   end
   M.transcript_win = nil
 end
+
+-- Slash-command completion source (the prompt buffer's 'completefunc'). When the
+-- input line starts with "/", it offers the available commands — name + its
+-- description — as a popup, like Claude/OpenCode. M._commands is captured in open().
+---@param findstart integer
+---@param base string
+function M._complete(findstart, base)
+  local line = vim.api.nvim_get_current_line()
+  if findstart == 1 then
+    if line:sub(1, 1) ~= "/" then
+      return -3 -- not a command line: offer nothing
+    end
+    return 0 -- replace from the leading slash
+  end
+  local typed = (base or ""):gsub("^/", "")
+  local items = {}
+  for _, c in ipairs((M._commands and M._commands()) or {}) do
+    if typed == "" or c.name:sub(1, #typed):lower() == typed:lower() then
+      items[#items + 1] = { word = "/" .. c.name, abbr = "/" .. c.name, menu = c.desc or "", icase = 1 }
+    end
+  end
+  return items
+end
+
+-- A stable global name for 'completefunc' to call into the module.
+_G.__ami_chat_completefunc = _G.__ami_chat_completefunc
+  or function(findstart, base) return require("ami-chat.ui")._complete(findstart, base) end
 
 --- Open the full interactive panel and focus the input.
 -- The prompt keymaps, from config (chat.keymaps), with built-in defaults.
@@ -340,6 +371,37 @@ function M.open(ctl)
   end
   bind_nav(km.history_prev, "prev")
   bind_nav(km.history_next, "next")
+
+  -- Slash-command popup. Typing "/" at the start of an empty draft opens a menu of
+  -- the available commands; it narrows as you type the name. The Up/Down recall
+  -- above already defers to a visible menu, so the arrows navigate it.
+  M._commands = ctl.commands
+  vim.bo[M.prompt_buf].completefunc = "v:lua.__ami_chat_completefunc"
+  -- Show the menu without auto-inserting anything; keep it per-buffer where
+  -- supported, else fall back to a saved/restored global.
+  local co = "menu,menuone,noinsert,noselect"
+  if not pcall(vim.api.nvim_set_option_value, "completeopt", co, { buf = M.prompt_buf }) then
+    M._saved_completeopt = vim.o.completeopt
+    vim.o.completeopt = co
+  end
+
+  vim.keymap.set("i", "/", function()
+    local l = vim.api.nvim_get_current_line()
+    local col = vim.api.nvim_win_get_cursor(0)[2]
+    return (l == "" and col == 0) and "/<C-x><C-u>" or "/"
+  end, { buffer = M.prompt_buf, expr = true, silent = true })
+
+  vim.keymap.set("i", "<Tab>", function()
+    return vim.fn.pumvisible() == 1 and "<C-y>" or "<Tab>"
+  end, { buffer = M.prompt_buf, expr = true, silent = true })
+
+  vim.keymap.set("i", "<CR>", function()
+    -- Accept the highlighted command; otherwise a normal newline in the draft.
+    if vim.fn.pumvisible() == 1 and vim.fn.complete_info({ "selected" }).selected ~= -1 then
+      return "<C-y>"
+    end
+    return "<CR>"
+  end, { buffer = M.prompt_buf, expr = true, silent = true })
 
   vim.cmd("startinsert")
 end
