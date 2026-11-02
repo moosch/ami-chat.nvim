@@ -91,6 +91,23 @@ transcript scrollback is kept as-is as a readable log. It needs `ami-history.nvi
 To send a message that genuinely starts with a slash, double it: `//what about /tmp`
 sends `/what about /tmp`.
 
+### Shell commands
+
+A message that begins with `!` runs the rest as a **shell command** instead of calling
+the model — like `:!` or Claude's bash mode. It runs in the background, in your
+project root, and its output is echoed into the transcript; nothing is sent to the LLM
+and the turn isn't recorded in history.
+
+```
+!pwd
+!git status -s
+!cargo test 2>&1 | tail -20
+```
+
+Long-running commands are killed after `shell.timeout_ms`, and very long output is
+truncated at `shell.max_output_bytes`. Turn the whole thing off with
+`chat.shell.enabled = false` (then `!…` is just sent to the model like any message).
+
 **Extensions can add their own commands** by returning a `{ name = { desc, fn } }`
 table from the `chat.commands` collector — see
 [`docs/extensions.md`](https://github.com/moosch/ami.nvim/blob/main/docs/extensions.md).
@@ -105,6 +122,9 @@ Options live under `chat` in ami's `setup()`:
 | `endpoint` | `nil` | provider base URL; `nil` ⇒ ami's default `model.endpoint` |
 | `model` | `nil` | chat model; `nil` ⇒ ami's default `model.model` (pick via `:AmiModel chat`) |
 | `timeout_ms` | `120000` | give up if no token arrives within this long (covers cold model loads) |
+| `shell.enabled` | `true` | allow `!cmd` in the input to run a shell command |
+| `shell.timeout_ms` | `30000` | kill a `!cmd` that runs longer than this |
+| `shell.max_output_bytes` | `100000` | truncate `!cmd` output longer than this |
 | `ui.position` | `"right"` | `"right"` \| `"left"` \| `"center"` |
 | `ui.width` / `ui.height` | `0.4` / `0.9` | fraction of screen (`<=1`) or absolute cells (`>1`) |
 | `ui.opacity` | `0.8` | `0`..`1`; lower = more see-through (via `winblend`) |

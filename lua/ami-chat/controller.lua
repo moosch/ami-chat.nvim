@@ -349,8 +349,70 @@ function M.run_command(message)
   end
 end
 
+-- Shell passthrough ----------------------------------------------------------
+-- A message beginning with "!" runs the rest as a shell command (like :! or
+-- Claude's bash mode) instead of calling the model: it runs in the project root,
+-- in the background, and its output is echoed into the transcript. Nothing is sent
+-- to the LLM and the turn is not recorded in history. Gated by chat.shell.enabled.
+
+--- Run `cmd` in a background shell and append its output to the transcript.
+function M.run_shell(cmd)
+  cmd = vim.trim(cmd or "")
+  local r = ui()
+  r.show()
+  if cmd == "" then
+    r.append("\n\n_Usage: `!<shell command>` — e.g. `!pwd`_\n")
+    return
+  end
+  if M.streaming then
+    vim.notify("ami: finish the current reply before running a shell command", vim.log.levels.WARN)
+    return
+  end
+
+  local scfg = (require("ami.config").options.chat or {}).shell or {}
+  local cwd = M.project_root()
+  r.append(("\n\n### You\n\n!%s\n\n### Shell\n\n"):format(cmd))
+  r.set_status("⏳ running…")
+
+  local shell = (vim.o.shell ~= "" and vim.o.shell) or "sh"
+  local flag = (vim.o.shellcmdflag ~= "" and vim.o.shellcmdflag) or "-c"
+  A.log.debug(("shell: %s %s %q (cwd=%s)"):format(shell, flag, cmd, cwd))
+
+  local ok, err = pcall(vim.system, { shell, flag, cmd }, {
+    cwd = cwd,
+    text = true,
+    timeout = scfg.timeout_ms or 30000,
+  }, function(res)
+    vim.schedule(function()
+      r.set_status(nil)
+      local out = res.stdout or ""
+      if res.stderr and res.stderr ~= "" then
+        out = (out ~= "" and (out .. "\n") or "") .. res.stderr
+      end
+      out = vim.trim(out)
+      local cap = scfg.max_output_bytes or 100000
+      if #out > cap then
+        out = out:sub(1, cap) .. "\n…(output truncated)…"
+      end
+      if out == "" then
+        out = "(no output)"
+      end
+      r.append("```\n" .. out .. "\n```\n")
+      if res.code ~= 0 then
+        r.append(("_(exit %d)_\n"):format(res.code))
+      end
+    end)
+  end)
+
+  if not ok then
+    r.set_status(nil)
+    r.append("```\n(failed to launch shell: " .. tostring(err) .. ")\n```\n")
+  end
+end
+
 --- Submit the current draft. Clears it; keeps the chat open. A leading "/" routes
---- to a slash command instead of the model ("//" escapes it to a literal message).
+--- to a slash command and a leading "!" to a shell command, instead of the model;
+--- "//" escapes a literal leading slash.
 function M.submit()
   local message = vim.trim(ui().read_input() or "")
   A.log.debug(("submit: invoked (%d chars)"):format(#message))
@@ -359,10 +421,13 @@ function M.submit()
   end
   M.record_input(message)
   ui().clear_input()
+  local scfg = (require("ami.config").options.chat or {}).shell or {}
   if message:sub(1, 2) == "//" then
     send(message:sub(2)) -- escaped: send text that really does start with a slash
   elseif message:sub(1, 1) == "/" then
     M.run_command(message)
+  elseif message:sub(1, 1) == "!" and scfg.enabled ~= false then
+    M.run_shell(message:sub(2))
   else
     send(message)
   end

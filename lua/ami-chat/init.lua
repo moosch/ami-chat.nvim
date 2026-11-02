@@ -22,6 +22,13 @@ return {
     -- endpoint = nil,  -- inherit ami's default model.endpoint
     -- model = nil,     -- inherit ami's default model.model (pick via :AmiModel chat)
     timeout_ms = 120000, -- give up if no token arrives within this long (cold load)
+    -- `!cmd` in the input runs a shell command (in the project root) and echoes its
+    -- output to the transcript — no LLM call. Set enabled = false to disable it.
+    shell = {
+      enabled = true,
+      timeout_ms = 30000, -- kill a command that runs longer than this
+      max_output_bytes = 100000, -- truncate output longer than this
+    },
     ui = {
       position = "right",   -- "right" | "left" | "center"
       width = 0.4,          -- fraction of columns (<=1) or absolute columns (>1)
