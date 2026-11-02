@@ -73,7 +73,13 @@ just `/help` to print the list into the transcript.
 | --- | --- | --- |
 | `/help` | List the available commands | ami-chat |
 | `/new [name]` | Start a fresh session | ami-chat |
+| `/model [slot]`, `/models` | Pick a model for a slot (`:AmiModel`) / show each slot's model (`:AmiModels`) | ami (core) |
 | `/compact [keep=N]`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
+| `/persona [name\|off]` | Switch the advisor's persona (`:AmiPersona`) | [ami-persona.nvim](https://github.com/moosch/ami-persona.nvim) |
+
+The list reflects what's installed — commands from an extension appear only when it's
+loaded (e.g. `/persona` needs ami-persona). `/model`, `/models` and `/persona` mirror
+the `:Ami*` commands, so they're available at the whiteboard without leaving the input.
 
 `/compact` is the context-saver: on a long conversation it folds everything so far
 into a single summary (preserving decisions, constraints, and open questions). Pass
