@@ -96,6 +96,8 @@ end
 -- as extmarks (priority over treesitter); colours are copied from the colorscheme's
 -- semantic groups and refreshed on :colorscheme, so they adapt to light/dark.
 M.style_ns = vim.api.nvim_create_namespace("ami_chat_style")
+-- Tracks collapse marks (a position in the transcript that survives later appends).
+M.mark_ns = vim.api.nvim_create_namespace("ami_chat_mark")
 
 -- group -> { config key, source groups to borrow fg from (first with a real fg
 -- wins), attrs }. The Diagnostic family is used because themes colour it distinctly
@@ -257,6 +259,40 @@ function M.clear()
   ensure_transcript_buf()
   vim.api.nvim_buf_set_lines(M.transcript_buf, 0, -1, false, {})
   vim.api.nvim_buf_clear_namespace(M.transcript_buf, M.style_ns, 0, -1)
+  vim.api.nvim_buf_clear_namespace(M.transcript_buf, M.mark_ns, 0, -1)
+end
+
+--- Mark the current end of the transcript and return an opaque handle. A later
+--- `collapse(handle, …)` removes everything appended after this point — used to
+--- stream content in live and then fold it away. The handle tracks its position
+--- across the appends in between (it's an extmark).
+function M.mark()
+  ensure_transcript_buf()
+  local row = math.max(0, vim.api.nvim_buf_line_count(M.transcript_buf) - 1)
+  -- Left gravity: appends at this position must NOT drag the mark along, or it would
+  -- ride to the end of the stream and collapse would remove nothing.
+  return vim.api.nvim_buf_set_extmark(M.transcript_buf, M.mark_ns, row, 0, { right_gravity = false })
+end
+
+--- Remove everything appended since `handle` (from mark()), then optionally append
+--- `text`. Leaves the transcript as it was at the mark, plus `text`.
+function M.collapse(handle, text)
+  ensure_transcript_buf()
+  local buf = M.transcript_buf
+  if handle then
+    local pos = vim.api.nvim_buf_get_extmark_by_id(buf, M.mark_ns, handle, {})
+    if pos and pos[1] then
+      local from, last = pos[1], vim.api.nvim_buf_line_count(buf)
+      if from < last then
+        vim.api.nvim_buf_set_lines(buf, from, last, false, {})
+        vim.api.nvim_buf_clear_namespace(buf, M.style_ns, from, -1)
+      end
+    end
+    pcall(vim.api.nvim_buf_del_extmark, buf, M.mark_ns, handle)
+  end
+  if text and text ~= "" then
+    M.append(text)
+  end
 end
 
 function M.set_status(text)

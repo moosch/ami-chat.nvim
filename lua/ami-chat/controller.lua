@@ -154,6 +154,24 @@ function M.append(text)
   ui().append(text)
 end
 
+--- Mark the transcript end; returns a handle (or nil if the renderer can't).
+--- Pair with M.collapse to stream content in and then fold it to a summary line.
+function M.mark()
+  local r = ui()
+  return r.mark and r.mark() or nil
+end
+
+--- Remove everything appended since `handle`, then append `text`. If the renderer
+--- doesn't support collapsing (no mark/collapse), just append `text`.
+function M.collapse(handle, text)
+  local r = ui()
+  if r.collapse then
+    r.collapse(handle, text)
+  elseif text and text ~= "" then
+    r.append(text)
+  end
+end
+
 function M.session()
   return M.session_id
 end
