@@ -97,17 +97,18 @@ end
 -- semantic groups and refreshed on :colorscheme, so they adapt to light/dark.
 M.style_ns = vim.api.nvim_create_namespace("ami_chat_style")
 
--- group -> { source groups to borrow fg from (first with a real fg wins), attrs }.
--- The Diagnostic family is used because themes colour it distinctly and reliably:
--- You = teal/hint, Advisor = blue/info, Shell = green, Suggestion = yellow, error =
--- red. Each falls back to a syntax group for minimal themes that skip Diagnostic*.
+-- group -> { config key, source groups to borrow fg from (first with a real fg
+-- wins), attrs }. The Diagnostic family is used because themes colour it distinctly
+-- and reliably: You = teal/hint, Advisor = blue/info, Shell = green, Suggestion =
+-- yellow, error = red. Each falls back to a syntax group for minimal themes that skip
+-- Diagnostic*. The user can override any role via chat.highlights[key] (see below).
 local HL_GROUPS = {
-  AmiChatRoleUser = { src = { "DiagnosticHint", "Identifier" }, bold = true },
-  AmiChatRoleAdvisor = { src = { "DiagnosticInfo", "Function" }, bold = true },
-  AmiChatRoleShell = { src = { "DiagnosticOk", "String" }, bold = true },
-  AmiChatRoleSuggestion = { src = { "DiagnosticWarn", "WarningMsg" }, bold = true },
-  AmiChatError = { src = { "DiagnosticError", "ErrorMsg" } },
-  AmiChatMuted = { src = { "Comment" }, italic = true },
+  AmiChatRoleUser = { key = "user", src = { "DiagnosticHint", "Identifier" }, bold = true },
+  AmiChatRoleAdvisor = { key = "advisor", src = { "DiagnosticInfo", "Function" }, bold = true },
+  AmiChatRoleShell = { key = "shell", src = { "DiagnosticOk", "String" }, bold = true },
+  AmiChatRoleSuggestion = { key = "suggestion", src = { "DiagnosticWarn", "WarningMsg" }, bold = true },
+  AmiChatError = { key = "error", src = { "DiagnosticError", "ErrorMsg" } },
+  AmiChatMuted = { key = "muted", src = { "Comment" }, italic = true },
 }
 
 -- line pattern -> highlight group (first match wins).
@@ -133,15 +134,31 @@ local function first_fg(srcs)
   return nil
 end
 
---- (Re)define the ami-chat highlight groups from the current colorscheme. Borrows
---- each role's colour from a semantic group (bold), falling back to a plain link.
+--- (Re)define the ami-chat highlight groups. By default each role's colour is
+--- borrowed from the current colourscheme (bold); the user can override any role via
+--- chat.highlights[key], where the value is:
+---   a string  → link the role to that highlight group  ("AmiChatRoleUser" ← "Keyword")
+---   a table   → an nvim_set_hl spec                     ({ fg = "#7aa2f7", bold = true })
+---   false     → turn the tint off for that role (keeps the plain markdown header)
+--- Re-run on every :colorscheme, so config overrides survive theme changes.
 function M.define_highlights()
+  local hl = (require("ami.config").options.chat or {}).highlights or {}
+  M._style_disabled = {}
   for name, d in pairs(HL_GROUPS) do
-    local fg = first_fg(d.src)
-    if fg then
-      vim.api.nvim_set_hl(0, name, { fg = fg, bold = d.bold, italic = d.italic })
+    local override = hl[d.key]
+    if override == false then
+      M._style_disabled[name] = true -- style_range will skip this role entirely
+    elseif type(override) == "string" then
+      vim.api.nvim_set_hl(0, name, { link = override })
+    elseif type(override) == "table" then
+      vim.api.nvim_set_hl(0, name, override)
     else
-      vim.api.nvim_set_hl(0, name, { link = d.src[#d.src] })
+      local fg = first_fg(d.src) -- theme-derived default
+      if fg then
+        vim.api.nvim_set_hl(0, name, { fg = fg, bold = d.bold, italic = d.italic })
+      else
+        vim.api.nvim_set_hl(0, name, { link = d.src[#d.src] })
+      end
     end
   end
 end
@@ -151,9 +168,10 @@ local function style_range(buf, from, to)
   from = math.max(0, from)
   local lines = vim.api.nvim_buf_get_lines(buf, from, to + 1, false)
   vim.api.nvim_buf_clear_namespace(buf, M.style_ns, from, to + 1)
+  local disabled = M._style_disabled or {}
   for i, line in ipairs(lines) do
     for _, rule in ipairs(LINE_HL) do
-      if line:match(rule.pat) then
+      if line:match(rule.pat) and not disabled[rule.hl] then
         local lnum = from + i - 1
         pcall(vim.api.nvim_buf_set_extmark, buf, M.style_ns, lnum, 0, {
           end_row = lnum,

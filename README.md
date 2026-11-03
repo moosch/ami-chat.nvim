@@ -175,18 +175,30 @@ still get plain, readable text.
 
 On top of the markdown highlighting, each turn's header is tinted so the conversation
 is easy to scan — **You**, **Advisor**, **Shell** and **💡 Suggestion** each get a
-distinct accent, with muted/error tints for status lines. The colours are **derived
-from your colourscheme** (borrowed from the `Diagnostic*` groups) and refreshed on
-`:colorscheme`, so they adapt to light/dark automatically.
+distinct accent, with muted/error tints for status lines. By default the colours are
+**derived from your colourscheme** (borrowed from the `Diagnostic*` groups) and
+refreshed on `:colorscheme`, so they adapt to light/dark automatically.
 
-Override any of them — set the `AmiChat*` groups (ideally in a `ColorScheme`
-autocmd, since they're re-derived on theme change):
+**Configure them** under `chat.highlights` — one entry per role (`user`, `advisor`,
+`shell`, `suggestion`, `error`, `muted`), each either a highlight-group name to link
+to, a full `nvim_set_hl` spec, or `false` to turn that role's tint off:
 
 ```lua
-vim.api.nvim_set_hl(0, "AmiChatRoleUser", { fg = "#7aa2f7", bold = true })
-vim.api.nvim_set_hl(0, "AmiChatRoleAdvisor", { fg = "#bb9af7", bold = true })
--- also: AmiChatRoleShell, AmiChatRoleSuggestion, AmiChatError, AmiChatMuted
+require("ami").setup({
+  chat = {
+    highlights = {
+      user = "Keyword",                       -- link to an existing group
+      advisor = { fg = "#bb9af7", bold = true }, -- or a full spec
+      shell = false,                          -- or disable the tint
+    },
+  },
+})
 ```
+
+Config overrides are respected across `:colorscheme` changes. (The underlying groups
+are `AmiChatRoleUser`, `AmiChatRoleAdvisor`, `AmiChatRoleShell`,
+`AmiChatRoleSuggestion`, `AmiChatError`, `AmiChatMuted` — you can also `:highlight`
+them directly, but prefer the config so a theme switch doesn't clobber your choice.)
 
 ## Replacing the panel UI
 

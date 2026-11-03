@@ -48,6 +48,13 @@ return {
       history_next = "<Down>",       -- recall a newer one / restore the draft (at the bottom)
       toggle = nil,                  -- e.g. "<leader>ac" to map :AmiChat globally
     },
+    -- Transcript role-header colours. Each role defaults to a colour derived from
+    -- your colourscheme; override per role here (respected across :colorscheme too):
+    --   a string  → link to that highlight group   (advisor = "Keyword")
+    --   a table   → an nvim_set_hl spec            (user = { fg = "#7aa2f7", bold = true })
+    --   false     → turn the tint off for that role
+    -- Keys: user, advisor, shell, suggestion, error, muted.
+    highlights = {},
   },
 
   commands = {
