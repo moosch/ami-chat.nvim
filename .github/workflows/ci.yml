@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out ami core (needed on the Lua path)
+        uses: actions/checkout@v4
+        with:
+          repository: moosch/ami.nvim
+          path: .ami-core
+      - name: Install Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+      - name: Run the headless spec suite
+        run: make test
+        env:
+          AMI_CORE: ${{ github.workspace }}/.ami-core

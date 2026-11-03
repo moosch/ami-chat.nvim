@@ -274,6 +274,25 @@ registered, falling back to the bundled floating panel (`lua/ami-chat/ui.lua`). 
 ami's [`docs/extensions.md`](https://github.com/moosch/ami.nvim/blob/main/docs/extensions.md)
 for the `chat_ui` contract.
 
+## Development
+
+Run the headless spec suite (zero dependencies — just Neovim):
+
+```sh
+make test
+```
+
+These specs exercise an ami extension, so they need ami core on the Lua path.
+`tests/run.lua` finds it automatically beside this repo (a `../ami.nvim` or
+`../ai-harness` checkout), or point it explicitly:
+
+```sh
+AMI_CORE=/path/to/ami.nvim make test
+```
+
+CI runs the same suite (`.github/workflows/ci.yml`), checking out `moosch/ami.nvim`
+alongside. The harness is vendored (`tests/minitest.lua`) — no plenary, no busted.
+
 ## License
 
 [MIT](LICENSE)

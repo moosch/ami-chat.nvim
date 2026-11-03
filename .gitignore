@@ -1,0 +1,2 @@
+# ami core checked out beside the repo for `make test` in CI
+.ami-core/
