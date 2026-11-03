@@ -84,6 +84,16 @@ return {
       desc = "Stop the in-flight advisor reply",
       fn = function() controller.cancel() end,
     },
+    AmiYank = {
+      desc = "Copy a transcript code block to the clipboard (:AmiYank [N])",
+      nargs = "?",
+      fn = function(opts) controller.yank_block(opts.args) end,
+    },
+    AmiApply = {
+      desc = "Diff a transcript code block against a file to review & apply (:AmiApply [N] [path])",
+      nargs = "*",
+      fn = function(opts) controller.apply_block(opts.args) end,
+    },
   },
 
   setup = function(api)

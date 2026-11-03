@@ -255,6 +255,17 @@ function M.append(text)
   end
 end
 
+--- The transcript as a list of lines (optional renderer method). Lets the
+--- controller read back the conversation — e.g. to pull a fenced code block out of
+--- it for /yank and /apply. Returns {} when there's no transcript yet.
+---@return string[]
+function M.transcript_lines()
+  if not (M.transcript_buf and vim.api.nvim_buf_is_valid(M.transcript_buf)) then
+    return {}
+  end
+  return vim.api.nvim_buf_get_lines(M.transcript_buf, 0, -1, false)
+end
+
 function M.clear()
   ensure_transcript_buf()
   vim.api.nvim_buf_set_lines(M.transcript_buf, 0, -1, false, {})

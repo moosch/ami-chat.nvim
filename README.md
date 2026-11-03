@@ -57,6 +57,8 @@ register it:
 | `:AmiAsk {text}` | One-shot question; visual mode sends the selection + its deps |
 | `:AmiNewSession [name]` | Start a fresh conversation |
 | `:AmiStop` | Stop the in-flight reply (also `<C-c>` in the panel) |
+| `:AmiYank [N]` | Copy a transcript code block to the clipboard (default: the last) |
+| `:AmiApply [N] [path]` | Diff a code block against a file to review & apply it |
 
 Pick the chat model live with `:AmiModel chat`. A reply also stops if you close the
 panel, and gives up on its own if no token arrives within `timeout_ms`.
@@ -73,6 +75,8 @@ just `/help` to print the list into the transcript.
 | --- | --- | --- |
 | `/help` | List the available commands | ami-chat |
 | `/new [name]` | Start a fresh session | ami-chat |
+| `/yank [N]` | Copy the Nth transcript code block to the clipboard (default: last) | ami-chat |
+| `/apply [N] [path]` | Diff a code block against a file to review & apply it | ami-chat |
 | `/model [slot]`, `/models` | Pick a model for a slot (`:AmiModel`) / show each slot's model (`:AmiModels`) | ami (core) |
 | `/compact [keep=N]`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
 | `/persona [name\|off]` | Switch the advisor's persona (`:AmiPersona`) | [ami-persona.nvim](https://github.com/moosch/ami-persona.nvim) |
@@ -135,6 +139,23 @@ Only paths that point at a real file **inside the project root** are used, so an
 ordinary prose (an email, a `@param` tag) is left alone, and a path that escapes the
 root is refused. Large trees are capped and ignore the usual noise
 (`.git`, `node_modules`, `target`, `dist`, …).
+
+### Using the advisor's code (`/yank`, `/apply`)
+
+The advisor **advises** — it never edits your files. When you want to act on a snippet,
+these two commands bridge the gap, and you always stay the one who commits the change:
+
+- **`/yank [N]`** copies a fenced code block from the transcript to the clipboard
+  (unnamed + `0` registers, and the `+` clipboard when a provider is set). `N` picks
+  the block (1-based; `-1` or omitted = the last one). Paste it wherever you like.
+- **`/apply [N] [path]`** opens the block in a **diff** against a file (a new tab:
+  the file on the left, the suggestion on the right). `path` defaults to the file the
+  chat is attached to; give one to target another (confined to the project root).
+  Move hunks across with `do`/`dp` (`]c`/`[c` to navigate) and `:w` the file. **ami
+  writes nothing** — it stages the diff; saving is yours. Best for full-file or
+  whole-region suggestions; for a small snippet, `/yank` is usually quicker.
+
+Both are also available as `:AmiYank` / `:AmiApply`.
 
 ## Configuration
 

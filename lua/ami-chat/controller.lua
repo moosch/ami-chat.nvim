@@ -458,6 +458,18 @@ builtins = {
       M.new_session(ctx.args ~= "" and ctx.args or nil)
     end,
   },
+  yank = {
+    desc = "Copy a transcript code block to the clipboard (/yank [N]; default last)",
+    fn = function(ctx)
+      M.yank_block(ctx.args)
+    end,
+  },
+  apply = {
+    desc = "Diff a code block against a file to review & apply it (/apply [N] [path])",
+    fn = function(ctx)
+      M.apply_block(ctx.args)
+    end,
+  },
 }
 
 --- The available slash commands as a sorted list of { name, desc }. The renderer
@@ -499,6 +511,186 @@ function M.run_command(message)
     A.log.error(("chat: command /%s failed — %s"):format(name, tostring(err)))
     r.append(("\n_Command `/%s` errored: %s_\n"):format(name, tostring(err)))
   end
+end
+
+-- Code blocks → yank / apply -------------------------------------------------
+-- Bridge the advisor (which only ADVISES) to action, but always user-initiated:
+-- /yank copies a fenced code block from the transcript to the clipboard, and /apply
+-- opens a block in a diff against a file so you review and save it yourself. ami
+-- never writes a file here — it stages the change; you commit it.
+
+-- Parse fenced ``` code blocks out of transcript lines, in order. Each block is
+-- { lang, lines }. Unclosed blocks (a reply still streaming) are ignored.
+---@param lines string[]
+---@return { lang: string, lines: string[] }[]
+local function code_blocks(lines)
+  local blocks, cur = {}, nil
+  for _, line in ipairs(lines or {}) do
+    if cur then
+      if line:match("^```+%s*$") then -- closing fence
+        blocks[#blocks + 1] = cur
+        cur = nil
+      else
+        cur.lines[#cur.lines + 1] = line
+      end
+    else
+      local fence, lang = line:match("^(```+)(.*)$")
+      if fence then
+        cur = { lang = vim.trim(lang or ""), lines = {} }
+      end
+    end
+  end
+  return blocks
+end
+
+-- A path shown relative to the project root (falls back to a ~/cwd-relative form
+-- when it isn't under the root).
+local function rel_to_root(abs)
+  local root = vim.fs.normalize(M.project_root())
+  local full = vim.fs.normalize(abs)
+  if full == root then
+    return vim.fs.basename(full)
+  end
+  if full:sub(1, #root + 1) == root .. "/" then
+    return full:sub(#root + 2)
+  end
+  return vim.fn.fnamemodify(abs, ":~:.")
+end
+
+-- Resolve `rel` to an absolute path confined to the project root (nil, err on an
+-- escape). The file need not exist — /apply diffs against an empty buffer for a new
+-- file. Shares the sandbox idea with @file references and ami-doc.
+local function path_under_root(rel)
+  local root = vim.fs.normalize(M.project_root())
+  local full = vim.fs.normalize(rel:sub(1, 1) == "/" and rel or (root .. "/" .. rel))
+  if full ~= root and full:sub(1, #root + 1) ~= root .. "/" then
+    return nil, "refusing a path outside the project root"
+  end
+  return full
+end
+
+-- Pick block index from an arg ("" → last; N → Nth; -1 → last). Returns block, n,
+-- count, err.
+local function pick_block(blocks, raw)
+  local count = #blocks
+  if count == 0 then
+    return nil, nil, 0, "there are no code blocks in the transcript yet"
+  end
+  local n = tonumber(vim.trim(raw or "")) or count
+  if n < 0 then
+    n = count + 1 + n
+  end
+  local b = blocks[n]
+  if not b then
+    return nil, n, count, ("no code block %d (there %s %d)"):format(n, count == 1 and "is" or "are", count)
+  end
+  return b, n, count
+end
+
+--- Copy a transcript code block to the clipboard (default: the last one).
+---@param arg string|nil  the block number (N, or -1 for last); empty = last
+function M.yank_block(arg)
+  local r = ui()
+  r.show()
+  if not r.transcript_lines then
+    r.append("\n_This chat UI can't read the transcript, so `/yank` isn't available._\n")
+    return
+  end
+  local blocks = code_blocks(r.transcript_lines())
+  local b, n, count, err = pick_block(blocks, arg)
+  if not b then
+    r.append("\n_" .. err .. "._\n")
+    return
+  end
+  local text = table.concat(b.lines, "\n")
+  vim.fn.setreg('"', text) -- unnamed: paste with p
+  vim.fn.setreg("0", text) -- yank register
+  pcall(vim.fn.setreg, "+", text) -- system clipboard, if a provider is present
+  r.append(("\n_✓ yanked code block %d of %d (%s%d line%s) — paste with `p`, or ⌘/Ctrl-V if a clipboard provider is set._\n")
+    :format(n, count, b.lang ~= "" and (b.lang .. ", ") or "", #b.lines, #b.lines == 1 and "" or "s"))
+end
+
+-- Open `block` in a diff against the file at `abs`, in a fresh tab: the file on the
+-- left, the suggestion on the right. The user transfers hunks (do/dp, ]c/[c) and
+-- :w the file — nothing is written by ami.
+local function open_diff(abs, block, n)
+  vim.schedule(function()
+    local _, win = M.source()
+    if win and vim.api.nvim_win_is_valid(win) then
+      pcall(vim.api.nvim_set_current_win, win) -- step out of the chat float first
+    end
+    local ok = pcall(vim.cmd, "tabnew " .. vim.fn.fnameescape(abs))
+    if not ok then
+      vim.notify("ami apply: could not open " .. abs, vim.log.levels.ERROR)
+      return
+    end
+    local ft = vim.bo.filetype
+    vim.cmd("diffthis")
+    vim.cmd("vnew")
+    local sb = vim.api.nvim_get_current_buf()
+    vim.bo[sb].buftype = "nofile"
+    vim.bo[sb].bufhidden = "wipe"
+    vim.bo[sb].swapfile = false
+    pcall(vim.api.nvim_buf_set_name, sb, ("ami://suggestion-%d"):format(n))
+    vim.api.nvim_buf_set_lines(sb, 0, -1, false, block.lines)
+    vim.bo[sb].filetype = (block.lang ~= "" and block.lang) or ft
+    vim.cmd("diffthis")
+    vim.notify(
+      ("ami: block %d vs %s — move hunks with do/dp (]c/[c to navigate), then :w the file. Nothing is written until you save.")
+        :format(n, rel_to_root(abs)),
+      vim.log.levels.INFO)
+  end)
+end
+
+--- Diff a transcript code block against a file so it can be reviewed and applied.
+--- `/apply [N] [path]` — N defaults to the last block; path defaults to the file the
+--- chat is attached to. ami stages the diff; the user saves.
+---@param arg string|nil
+function M.apply_block(arg)
+  local r = ui()
+  r.show()
+  if not r.transcript_lines then
+    r.append("\n_This chat UI can't read the transcript, so `/apply` isn't available._\n")
+    return
+  end
+  local blocks = code_blocks(r.transcript_lines())
+  -- "[N] [path]": a leading integer is the block number; the rest (or the whole arg)
+  -- is the target path.
+  local a = vim.trim(arg or "")
+  local num, path
+  local first, rest = a:match("^(%S+)%s*(.-)%s*$")
+  if first and first:match("^%-?%d+$") then
+    num, path = first, (rest ~= "" and rest or nil)
+  elseif a ~= "" then
+    path = a
+  end
+
+  local b, n, _, err = pick_block(blocks, num)
+  if not b then
+    r.append("\n_" .. err .. "._\n")
+    return
+  end
+
+  local abs
+  if path then
+    local full, perr = path_under_root(path)
+    if not full then
+      r.append("\n_apply: " .. perr .. "._\n")
+      return
+    end
+    abs = full
+  else
+    local buf = M.source_buf
+    local name = (buf and vim.api.nvim_buf_is_valid(buf)) and vim.api.nvim_buf_get_name(buf) or ""
+    if name == "" then
+      r.append(("\n_apply: no target file — give a path, e.g. `/apply %d path/to/file`._\n"):format(n))
+      return
+    end
+    abs = name
+  end
+  r.append(("\n_Opening code block %d in a diff against `%s` — review and `:w` to apply._\n")
+    :format(n, rel_to_root(abs)))
+  open_diff(abs, b, n)
 end
 
 -- Shell passthrough ----------------------------------------------------------
