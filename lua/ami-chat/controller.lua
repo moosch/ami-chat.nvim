@@ -44,6 +44,13 @@ local mem = {}
 local input_history = {}
 local INPUT_HISTORY_MAX = 200
 
+-- Cancellers for anything currently streaming into the panel. The chat reply is
+-- cancelled directly (it needs the _cancelled flag for its "[stopped]" line); other
+-- producers that stream into the transcript — e.g. ami-doc's /doc — register a
+-- canceller here so the same <C-c> / :AmiStop / panel close stops them too. Keyed by
+-- an opaque token; each fn is run at most once.
+local cancellers = {}
+
 --- Capture the ami extension API. Call once from the extension's setup().
 function M.init(api)
   A = api
@@ -263,14 +270,42 @@ local function send(message, selection, range)
   end)
 end
 
---- Stop the in-flight reply, if any (api.chat/:AmiStop/panel key). The killed
---- request surfaces through on_error, which renders "[stopped]" not an error.
-function M.cancel()
-  if not (M.streaming and M._inflight) then
-    return
+--- Register a canceller for something streaming into the panel (e.g. ami-doc).
+--- Returns an opaque token; call unregister_cancel(token) when the stream settles.
+--- M.cancel() runs every registered canceller (and the chat reply) at once.
+---@param fn fun() stops the producer's in-flight request
+---@return table token
+function M.register_cancel(fn)
+  local token = {}
+  cancellers[token] = fn
+  return token
+end
+
+--- Drop a canceller registered with register_cancel (on normal completion/error).
+function M.unregister_cancel(token)
+  if token then
+    cancellers[token] = nil
   end
-  M._cancelled = true
-  pcall(function() M._inflight:kill("sigterm") end)
+end
+
+--- Stop whatever is streaming into the panel, if anything (api.chat/:AmiStop/panel
+--- key/panel close): the chat reply and any registered producer (ami-doc, …). The
+--- killed chat request surfaces through on_error, which renders "[stopped]" not an
+--- error. Returns true if it stopped something.
+---@return boolean stopped
+function M.cancel()
+  local stopped = false
+  if M.streaming and M._inflight then
+    M._cancelled = true
+    pcall(function() M._inflight:kill("sigterm") end)
+    stopped = true
+  end
+  for token, fn in pairs(cancellers) do
+    cancellers[token] = nil -- clear first so a re-entrant cancel can't double-run it
+    pcall(fn)
+    stopped = true
+  end
+  return stopped
 end
 
 -- Slash commands ------------------------------------------------------------
