@@ -389,24 +389,48 @@ function M.close()
   M.transcript_win = nil
 end
 
--- Slash-command completion source (the prompt buffer's 'completefunc'). When the
--- input line starts with "/", it offers the available commands — name + its
--- description — as a popup, like Claude/OpenCode. M._commands is captured in open().
+-- Completion source (the prompt buffer's 'completefunc'), serving two popups like
+-- Claude/OpenCode:
+--   * a leading "/" offers the available slash commands (name + description);
+--   * an "@token" anywhere offers project files to reference in the message.
+-- M._commands / M._files are captured in open().
 ---@param findstart integer
 ---@param base string
 function M._complete(findstart, base)
   local line = vim.api.nvim_get_current_line()
   if findstart == 1 then
-    if line:sub(1, 1) ~= "/" then
-      return -3 -- not a command line: offer nothing
+    -- Command completion: a leading "/" owns the whole line.
+    if line:sub(1, 1) == "/" then
+      return 0
     end
-    return 0 -- replace from the leading slash
+    -- File completion: an "@token" ending at the cursor and starting a word.
+    local col = vim.api.nvim_win_get_cursor(0)[2] -- 0-based byte col of the cursor
+    local before = line:sub(1, col)
+    local start = before:match("()@[%w._/%-]*$") -- 1-based index of the @, if any
+    if start then
+      local prev = before:sub(start - 1, start - 1)
+      if start == 1 or prev:match("%s") then
+        return start - 1 -- 0-based byte col of the @
+      end
+    end
+    return -3 -- nothing to complete here
   end
-  local typed = (base or ""):gsub("^/", "")
+
+  base = base or ""
   local items = {}
-  for _, c in ipairs((M._commands and M._commands()) or {}) do
-    if typed == "" or c.name:sub(1, #typed):lower() == typed:lower() then
-      items[#items + 1] = { word = "/" .. c.name, abbr = "/" .. c.name, menu = c.desc or "", icase = 1 }
+  if base:sub(1, 1) == "/" then
+    local typed = base:sub(2)
+    for _, c in ipairs((M._commands and M._commands()) or {}) do
+      if typed == "" or c.name:sub(1, #typed):lower() == typed:lower() then
+        items[#items + 1] = { word = "/" .. c.name, abbr = "/" .. c.name, menu = c.desc or "", icase = 1 }
+      end
+    end
+  elseif base:sub(1, 1) == "@" then
+    local typed = base:sub(2)
+    for _, rel in ipairs((M._files and M._files()) or {}) do
+      if typed == "" or rel:sub(1, #typed):lower() == typed:lower() then
+        items[#items + 1] = { word = "@" .. rel, abbr = "@" .. rel, menu = "file", icase = 1 }
+      end
     end
   end
   return items
@@ -435,7 +459,7 @@ local function first(v, fallback)
   return k or fallback
 end
 
----@param ctl table { submit, new_session, close, input_history }
+---@param ctl table { submit, new_session, close, stop, input_history, commands, files }
 function M.open(ctl)
   ensure_prompt_buf()
   M._hist = { idx = nil, draft = nil } -- start on a fresh draft each open
@@ -514,10 +538,12 @@ function M.open(ctl)
   bind_nav(km.history_prev, "prev")
   bind_nav(km.history_next, "next")
 
-  -- Slash-command popup. Typing "/" at the start of an empty draft opens a menu of
-  -- the available commands; it narrows as you type the name. The Up/Down recall
-  -- above already defers to a visible menu, so the arrows navigate it.
+  -- Completion popups. Typing "/" at the start of an empty draft opens the command
+  -- menu; typing "@" at a word boundary opens the project-file menu. Both narrow as
+  -- you type. The Up/Down recall above already defers to a visible menu, so the
+  -- arrows navigate it.
   M._commands = ctl.commands
+  M._files = ctl.files
   vim.bo[M.prompt_buf].completefunc = "v:lua.__ami_chat_completefunc"
   -- Show the menu without auto-inserting anything; keep it per-buffer where
   -- supported, else fall back to a saved/restored global.
@@ -531,6 +557,15 @@ function M.open(ctl)
     local l = vim.api.nvim_get_current_line()
     local col = vim.api.nvim_win_get_cursor(0)[2]
     return (l == "" and col == 0) and "/<C-x><C-u>" or "/"
+  end, { buffer = M.prompt_buf, expr = true, silent = true })
+
+  -- "@" opens the file popup, but only when it starts a word (so emails and the
+  -- like aren't hijacked).
+  vim.keymap.set("i", "@", function()
+    local l = vim.api.nvim_get_current_line()
+    local col = vim.api.nvim_win_get_cursor(0)[2]
+    local prev = col > 0 and l:sub(col, col) or ""
+    return (col == 0 or prev:match("%s")) and "@<C-x><C-u>" or "@"
   end, { buffer = M.prompt_buf, expr = true, silent = true })
 
   vim.keymap.set("i", "<Tab>", function()

@@ -44,6 +44,18 @@ local mem = {}
 local input_history = {}
 local INPUT_HISTORY_MAX = 200
 
+-- Directory names never offered as @file completions nor walked into.
+local FILE_IGNORE = {
+  [".git"] = true, ["node_modules"] = true, [".venv"] = true, ["venv"] = true,
+  ["__pycache__"] = true, [".mypy_cache"] = true, [".pytest_cache"] = true,
+  ["target"] = true, ["dist"] = true, ["build"] = true, [".next"] = true,
+  [".cache"] = true, [".idea"] = true, [".DS_Store"] = true,
+}
+local FILE_LIST_CAP = 3000 -- stop walking after this many files (keeps the popup snappy)
+-- Short-lived cache of the project's file list, so repeatedly opening the @ popup
+-- doesn't re-walk the tree on every keystroke.
+local file_cache = { root = nil, at = 0, list = nil }
+
 -- Cancellers for anything currently streaming into the panel. The chat reply is
 -- cancelled directly (it needs the _cancelled flag for its "[stopped]" line); other
 -- producers that stream into the transcript — e.g. ami-doc's /doc — register a
@@ -96,6 +108,7 @@ local function ctl()
     stop = M.cancel,
     input_history = M.input_history,
     commands = M.command_list,
+    files = M.file_list,
   }
 end
 
@@ -195,6 +208,83 @@ function M.is_streaming()
   return M.streaming == true
 end
 
+-- @file references ------------------------------------------------------------
+-- A message may name project files with "@path/to/file"; each one that resolves to
+-- a real file under the project root is read and included in the request context
+-- (as a "Referenced file" section, ranked above auto-resolved deps). "@" in ordinary
+-- prose (emails, @param, …) is ignored because it only counts when it points at a
+-- file that exists.
+
+-- Parse @path tokens from `message` and resolve them to files under the project
+-- root. Returns parallel lists: absolute paths (for the context) and project-
+-- relative paths (for the "attached …" note). Exposed (underscore) for unit tests.
+---@param message string
+---@return string[] abs, string[] rel
+function M._resolve_refs(message)
+  local root = vim.fs.normalize(M.project_root())
+  local uv = vim.uv or vim.loop
+  local abs, rel, seen = {}, {}, {}
+  for tok in (message or ""):gmatch("@([%w._/%-]+)") do
+    tok = tok:gsub("[%.,]+$", "") -- drop trailing sentence punctuation
+    if tok ~= "" and not seen[tok] then
+      seen[tok] = true
+      local full = vim.fs.normalize(tok:sub(1, 1) == "/" and tok or (root .. "/" .. tok))
+      local under = full == root or full:sub(1, #root + 1) == root .. "/"
+      local st = uv.fs_stat(full)
+      if under and st and st.type == "file" then
+        abs[#abs + 1] = full
+        rel[#rel + 1] = full:sub(#root + 2)
+      end
+    end
+  end
+  return abs, rel
+end
+
+--- The project's files as project-relative paths (sorted), for the @ completion
+--- popup. Cached briefly and capped so a large tree stays responsive. Exposed to
+--- the renderer via ctl().files.
+---@return string[]
+function M.file_list()
+  local root = M.project_root()
+  local uv = vim.uv or vim.loop
+  local now = uv.now()
+  if file_cache.root == root and file_cache.list and (now - file_cache.at) < 5000 then
+    return file_cache.list
+  end
+  local out = {}
+  -- Prune ignored directories during traversal where supported; fall back to a
+  -- plain walk (with a per-file segment filter below) on older Neovim.
+  local ok, iter = pcall(vim.fs.dir, root, {
+    depth = 20,
+    skip = function(name) return not FILE_IGNORE[name] end,
+  })
+  if not ok then
+    ok, iter = pcall(vim.fs.dir, root, { depth = 20 })
+  end
+  if ok and iter then
+    for name, typ in iter do
+      if typ == "file" then
+        local skip = false
+        for seg in name:gmatch("[^/]+") do
+          if FILE_IGNORE[seg] then
+            skip = true
+            break
+          end
+        end
+        if not skip then
+          out[#out + 1] = name
+        end
+      end
+      if #out >= FILE_LIST_CAP then
+        break
+      end
+    end
+  end
+  table.sort(out)
+  file_cache = { root = root, at = now, list = out }
+  return out
+end
+
 -- Assemble a turn (system + context + prior turns + message) and stream it
 -- straight to the model, rendering tokens into the transcript.
 local function send(message, selection, range)
@@ -205,10 +295,19 @@ local function send(message, selection, range)
   M.streaming = true
   local r = ui()
   r.show()
-  r.append("\n\n### You\n\n" .. message .. "\n\n### Advisor\n\n")
+  -- Resolve any @file references up front, so the "attached" note sits in the user
+  -- turn (before "### Advisor") and the files can be added to the gathered context.
+  local ref_abs, ref_rel = M._resolve_refs(message)
+  local note = ""
+  if #ref_rel > 0 then
+    note = ("\n_(attached %d file%s: %s)_\n"):format(
+      #ref_rel, #ref_rel > 1 and "s" or "", table.concat(ref_rel, ", "))
+  end
+  r.append("\n\n### You\n\n" .. message .. note .. "\n\n### Advisor\n\n")
   r.set_status(STATUS)
 
   A.context.gather_async(M.source_buf, M.source_win, selection, range, function(ctx)
+    ctx.explicit_paths = ref_abs
     local budget = (require("ami.config").options.context or {}).token_budget or 8000
     local block = A.context.assemble(ctx, budget)
     local eff = A.models.effective("chat")

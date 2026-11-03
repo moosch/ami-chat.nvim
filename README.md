@@ -114,6 +114,28 @@ table from the `chat.commands` collector — see
 [`docs/extensions.md`](https://github.com/moosch/ami.nvim/blob/main/docs/extensions.md).
 Commands run in-editor; ami-chat doesn't shell out.
 
+### File references (`@file`)
+
+Name a project file with `@path/to/file` in your message and its contents are pulled
+into the request context — handy for pointing the advisor at a file other than the one
+you're in:
+
+```
+how does @lua/ami/context.lua decide the project root?
+compare @src/old.rs and @src/new.rs
+```
+
+Type `@` at a word boundary and a **popup lists the project's files**, narrowing as you
+type the path (same keys as the command popup: arrows to move, `<Tab>`/`<CR>` to
+accept). Each `@file` that resolves is shown as an `_(attached …)_` note under your
+message and added to the context as a **Referenced file** section, ranked above the
+auto-resolved dependencies.
+
+Only paths that point at a real file **inside the project root** are used, so an `@` in
+ordinary prose (an email, a `@param` tag) is left alone, and a path that escapes the
+root is refused. Large trees are capped and ignore the usual noise
+(`.git`, `node_modules`, `target`, `dist`, …).
+
 ## Configuration
 
 Options live under `chat` in ami's `setup()`:
