@@ -22,6 +22,9 @@ return {
     -- endpoint = nil,  -- inherit ami's default model.endpoint
     -- model = nil,     -- inherit ami's default model.model (pick via :AmiModel chat)
     timeout_ms = 120000, -- give up if no token arrives within this long (cold load)
+    -- context_window = nil, -- your model's context size (tokens); when set, the header
+    --                       -- shows the request estimate as "~3.2k/32k". /tokens always
+    --                       -- prints the full breakdown.
     -- `!cmd` in the input runs a shell command (in the project root) and echoes its
     -- output to the transcript — no LLM call. Set enabled = false to disable it.
     shell = {

@@ -219,6 +219,45 @@ local function ensure_prompt_buf()
   vim.bo[M.prompt_buf].filetype = "markdown"
 end
 
+-- Transcript window title, with the live context-size indicator when set. The base
+-- is extended with " · ~3.2k" (and "/32k" when a context window is configured) so the
+-- header shows how big the next request is — a cue for when to /compact.
+M._title_base = " ami · advisor "
+
+local function k(n)
+  if n >= 1000 then
+    return ("%.1fk"):format(n / 1000)
+  end
+  return tostring(n)
+end
+
+local function composed_title()
+  if not M._tokens then
+    return M._title_base
+  end
+  local s = "~" .. k(M._tokens)
+  if M._tokens_window and M._tokens_window > 0 then
+    s = s .. "/" .. k(M._tokens_window)
+  end
+  return (M._title_base:gsub("%s+$", "")) .. " · " .. s .. " "
+end
+
+--- Show the context-size indicator in the header: `total` = estimated tokens in the
+--- next request, `window` = the model's context window (optional, for the "/NNk"
+--- denominator). Persists across hide/show; the controller calls it each turn.
+---@param total integer
+---@param window integer|nil
+function M.set_tokens(total, window)
+  M._tokens = total
+  M._tokens_window = window
+  if transcript_visible() then
+    pcall(vim.api.nvim_win_set_config, M.transcript_win, {
+      title = composed_title(),
+      title_pos = "center",
+    })
+  end
+end
+
 --- Ensure the transcript window is visible (does not steal focus).
 function M.show()
   ensure_transcript_buf()
@@ -234,7 +273,7 @@ function M.show()
     col = l.col,
     style = "minimal",
     border = "rounded",
-    title = " ami · advisor ",
+    title = composed_title(),
     title_pos = "center",
   })
   vim.wo[M.transcript_win].wrap = true

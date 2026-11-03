@@ -77,6 +77,7 @@ just `/help` to print the list into the transcript.
 | `/new [name]` | Start a fresh session | ami-chat |
 | `/yank [N]` | Copy the Nth transcript code block to the clipboard (default: last) | ami-chat |
 | `/apply [N] [path]` | Diff a code block against a file to review & apply it | ami-chat |
+| `/tokens` | Show the estimated context size of the last turn (what `/compact` reduces) | ami-chat |
 | `/model [slot]`, `/models` | Pick a model for a slot (`:AmiModel`) / show each slot's model (`:AmiModels`) | ami (core) |
 | `/compact [keep=N]`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
 | `/persona [name\|off]` | Switch the advisor's persona (`:AmiPersona`) | [ami-persona.nvim](https://github.com/moosch/ami-persona.nvim) |
@@ -157,6 +158,27 @@ these two commands bridge the gap, and you always stay the one who commits the c
 
 Both are also available as `:AmiYank` / `:AmiApply`.
 
+### Context size (`/tokens`)
+
+The panel header shows a running estimate of how big your next request is —
+` ami · advisor · ~3.2k ` — updated after every turn, so you can see the context
+growing and know when to `/compact`. Set `chat.context_window` to your model's size
+and it shows a denominator too: ` ~3.2k/32k `.
+
+`/tokens` prints the full breakdown into the transcript:
+
+```
+Context estimate (last turn, ~4 chars/token)
+- instructions (advisor + persona): ~0.4k
+- file / project context: ~1.1k (budget ~8.0k)
+- conversation history: ~1.6k  ← /compact shrinks this
+- your message: ~0.1k
+- total sent: ~3.2k
+```
+
+It's a rough heuristic (~4 chars per token), not your model's exact tokenizer — enough
+to judge when the conversation is getting heavy.
+
 ## Configuration
 
 Options live under `chat` in ami's `setup()`:
@@ -166,6 +188,7 @@ Options live under `chat` in ami's `setup()`:
 | `endpoint` | `nil` | provider base URL; `nil` ⇒ ami's default `model.endpoint` |
 | `model` | `nil` | chat model; `nil` ⇒ ami's default `model.model` (pick via `:AmiModel chat`) |
 | `timeout_ms` | `120000` | give up if no token arrives within this long (covers cold model loads) |
+| `context_window` | `nil` | your model's context size (tokens); when set, the header shows the request estimate as `~3.2k/32k` |
 | `shell.enabled` | `true` | allow `!cmd` in the input to run a shell command |
 | `shell.timeout_ms` | `30000` | kill a `!cmd` that runs longer than this |
 | `shell.max_output_bytes` | `100000` | truncate `!cmd` output longer than this |

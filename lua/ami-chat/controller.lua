@@ -285,6 +285,41 @@ function M.file_list()
   return out
 end
 
+-- "~3.2k" for ≥1000, "~850" otherwise. For the header + /tokens breakdown.
+local function fmt_tokens(n)
+  n = n or 0
+  if n >= 1000 then
+    return ("~%.1fk"):format(n / 1000)
+  end
+  return ("~%d"):format(n)
+end
+
+-- Estimate the outgoing request's size, broken into the parts the user can reason
+-- about: fixed instructions, per-turn file context, conversation history (what
+-- /compact reduces), and the new message. `total` sums the whole request (so it also
+-- captures anything chat_turn_pre added).
+local function estimate_request(req, block, hist, message, budget)
+  local est = A.context.estimate_tokens
+  local total = 0
+  for _, m in ipairs(req.messages or {}) do
+    total = total + est(m.content or "")
+  end
+  local history_tok = 0
+  for _, m in ipairs(hist or {}) do
+    history_tok = history_tok + est(m.content or "")
+  end
+  local block_tok, user_tok = est(block or ""), est(message or "")
+  local instr = total - block_tok - history_tok - user_tok
+  return {
+    total = total,
+    instructions = instr > 0 and instr or 0,
+    context = block_tok,
+    history = history_tok,
+    message = user_tok,
+    budget = budget,
+  }
+end
+
 -- Assemble a turn (system + context + prior turns + message) and stream it
 -- straight to the model, rendering tokens into the transcript.
 local function send(message, selection, range)
@@ -322,13 +357,22 @@ local function send(message, selection, range)
         messages[#messages + 1] = { role = "system", content = s }
       end
     end
-    vim.list_extend(messages, history_messages())
+    local hist = history_messages()
+    vim.list_extend(messages, hist)
     messages[#messages + 1] = { role = "user", content = message }
 
     -- Outgoing request; extensions may mutate it (persona, extra messages) via the
     -- chat_turn_pre event before it is sent.
     local req = { model = eff.model, messages = messages, stream = true }
     A.emit("chat_turn_pre", req)
+
+    -- Context-budget indicator: estimate the whole outgoing request and break it down
+    -- (so the header shows the total, and /tokens shows how much is history — the part
+    -- /compact reduces). Computed after chat_turn_pre so persona/extra messages count.
+    M._last_tokens = estimate_request(req, block, hist, message, budget)
+    if r.set_tokens then
+      r.set_tokens(M._last_tokens.total, (require("ami.config").options.chat or {}).context_window)
+    end
 
     local timeout = (require("ami.config").options.chat or {}).timeout_ms
     local reply = {}
@@ -468,6 +512,28 @@ builtins = {
     desc = "Diff a code block against a file to review & apply it (/apply [N] [path])",
     fn = function(ctx)
       M.apply_block(ctx.args)
+    end,
+  },
+  tokens = {
+    desc = "Show the estimated context size of the last turn (what /compact reduces)",
+    fn = function(ctx)
+      local t = M._last_tokens
+      if not t then
+        ctx.append("\n_No turns yet — the token estimate appears after your first message._\n")
+        return
+      end
+      local lines = {
+        "",
+        "**Context estimate** (last turn, ~4 chars/token)",
+        "",
+        ("- instructions (advisor + persona): %s"):format(fmt_tokens(t.instructions)),
+        ("- file / project context: %s (budget %s)"):format(fmt_tokens(t.context), fmt_tokens(t.budget)),
+        ("- conversation history: %s  ← `/compact` shrinks this"):format(fmt_tokens(t.history)),
+        ("- your message: %s"):format(fmt_tokens(t.message)),
+        ("- **total sent: %s**"):format(fmt_tokens(t.total)),
+        "",
+      }
+      ctx.append("\n" .. table.concat(lines, "\n") .. "\n")
     end,
   },
 }
