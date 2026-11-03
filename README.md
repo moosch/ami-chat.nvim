@@ -82,6 +82,7 @@ just `/help` to print the list into the transcript.
 | `/compact [keep=N]`, `/compress` | Summarize earlier turns into one summary, so future turns carry the summary instead of the whole history — shrinking the context sent to the model | [ami-history.nvim](https://github.com/moosch/ami-history.nvim) |
 | `/persona [name\|off]` | Switch the advisor's persona (`:AmiPersona`) | [ami-persona.nvim](https://github.com/moosch/ami-persona.nvim) |
 | `/doc PATH instructions` | Generate a document into the repo at `PATH` (advisor never writes files; this opts in) | [ami-doc.nvim](https://github.com/moosch/ami-doc.nvim) |
+| `/fix [notes]` | Explain & fix the current file's LSP diagnostics | [ami-context-lsp.nvim](https://github.com/moosch/ami-context-lsp.nvim) |
 
 The list reflects what's installed — commands from an extension appear only when it's
 loaded (e.g. `/persona` needs ami-persona). `/model`, `/models` and `/persona` mirror
